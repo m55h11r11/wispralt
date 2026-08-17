@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Hub window — full app surface",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "opener:default",
+    "clipboard-manager:default",
+    "global-shortcut:default",
+    "store:default",
+    "autostart:default",
+    "notification:default"
+  ]
+}

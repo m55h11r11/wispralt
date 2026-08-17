@@ -1,0 +1,98 @@
+/* Fonts are bundled locally (offline-safe, no Google ping, CSP-friendly). */
+@import "@fontsource-variable/eb-garamond";
+@import "@fontsource-variable/eb-garamond/wght-italic.css";
+@import "@fontsource-variable/figtree";
+
+:root {
+  /* ============================================================
+     Lirrly visual tokens: warm canvas, neutral surfaces,
+     lilac voice accents, and teal focus states.
+     ============================================================ */
+  --lumen-300: #ffffef;
+  --lumen-400: #ffffeb;
+  --lumen-500: #f7f7db;
+  --lumen: #deddd7;
+
+  --sand-50: #fcfcfb;
+  --sand-100: #faf9f7;
+  --sand-200: #f8f7f3;
+  --sand-500: #f5f4f0;
+  --sand-600: #eeebe3;
+
+  --neutral-400: #71716e;
+  --neutral-500: #878683;
+  --neutral-600: #9d9c98;
+  --neutral-700: #b3b2ad;
+  --neutral-800: #deddd7;
+  --neutral-900: #e9e8e1;
+
+  --brand-400: #f4e1ff;
+  --brand-500: #f0d7ff;
+  --brand-700: #d2ace9;
+  --brand-800: #6c358c;
+
+  --fathom-950: #034f46;
+  --fathom: #34d399;
+
+  --glow: #ffa946;
+  --flare: #ff6c4c;
+  --dawn: #f0d7ff;
+  --chord: #c48fdf;
+  --destructive: #f87171;
+
+  /* Lirrly's waveform gradient */
+  --brand-gradient: linear-gradient(90deg, #ffd5a4, #ffab9a, #ffc1f4, #dba0ff, #ffd5a4);
+
+  /* ===== Lirrly semantic aliases ===== */
+  --cream: var(--lumen-400); /* #ffffeb canvas */
+  --cream-card: var(--sand-50); /* #fcfcfb surface */
+  --sand: var(--sand-600); /* #eeebe3 muted surface */
+  --ink: #1a1a1a;
+  --ink-70: #464544;
+  --ink-55: #71716e; /* neutral-400 */
+  --ink-35: #9d9c98; /* neutral-600 */
+  --accent: var(--brand-500);
+  --accent-2: var(--fathom);
+  --lilac: var(--brand-500);
+  --lilac-deep: var(--brand-700);
+  --teal: var(--fathom-950);
+  --orange: var(--glow);
+  --danger: var(--destructive);
+
+  --border: #eeebe3; /* sand-600 */
+  --line: #f1efe8;
+  --border-strong: #deddd7;
+
+  --radius: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 1000px;
+  --shadow-card: 0 1px 3px rgba(26, 26, 26, 0.05), 0 6px 20px rgba(26, 26, 26, 0.07);
+
+  --serif: "EB Garamond Variable", "EB Garamond", Georgia, "Times New Roman", serif;
+  font-family: "Figtree Variable", "Figtree", -apple-system, "SF Pro Text", system-ui, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  /* transparent so the frameless flowbar window shows only its pill */
+  background: transparent;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font-family: inherit;
+}

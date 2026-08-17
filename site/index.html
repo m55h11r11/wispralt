@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lirrly — Speak. It's written. Free open-source dictation for macOS</title>
+  <meta name="description" content="Free, open-source dictation for your Mac. Press ⌘⇧D, talk into any text field, and clean, polished writing lands where your cursor is. Arabic-first — your dialect stays yours." />
+  <link rel="canonical" href="https://lirrly.com/" />
+  <meta name="theme-color" content="#ffffeb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Lirrly" />
+  <meta property="og:title" content="Lirrly — Speak. It's written." />
+  <meta property="og:description" content="Free, open-source dictation for macOS. ⌘⇧D anywhere. Arabic-first — your dialect stays yours." />
+  <meta property="og:url" content="https://lirrly.com/" />
+  <meta property="og:image" content="https://lirrly.com/img/hub-home.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png" />
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
+
+  <link rel="preload" href="fonts/eb-garamond-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="shell nav-inner">
+      <a class="brand" href="#top" aria-label="Lirrly — home">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="brand-name" translate="no">Lirrly</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#how">How</a>
+        <a href="#arabic" lang="ar">العربية</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#transforms">Transforms</a>
+        <a href="#open">Open&nbsp;source</a>
+      </nav>
+      <div class="nav-cta">
+        <a class="gh-link" href="https://github.com/m55h11r11/wispralt" aria-label="Lirrly on GitHub">
+          <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        </a>
+        <a class="btn btn-ink btn-sm" href="https://github.com/m55h11r11/wispralt/releases" data-magnet>Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="top">
+      <div class="shell hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow" data-reveal>Free &amp; open-source dictation for macOS</p>
+          <h1 class="display" data-reveal style="--d:60ms">
+            Speak.<br /><em>It&rsquo;s&nbsp;written.</em>
+          </h1>
+          <p class="hero-ar" lang="ar" dir="rtl" data-reveal style="--d:120ms">تكلّم، وخلّ الكتابة علينا.</p>
+          <p class="lede" data-reveal style="--d:180ms">
+            Press <kbd class="kbd-inline">⌘⇧D</kbd> in any app and talk. Lirrly turns your voice into
+            clean, polished writing&nbsp;&mdash; pasted right where your cursor is.
+          </p>
+          <div class="cta-row" data-reveal style="--d:240ms">
+            <a class="btn btn-ink" href="https://github.com/m55h11r11/wispralt/releases" data-magnet>
+              Download for macOS
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/></svg>
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/m55h11r11/wispralt" data-magnet>
+              Star on GitHub<span class="star-count" id="stars" hidden></span>
+            </a>
+          </div>
+          <ul class="fine" data-reveal style="--d:300ms">
+            <li>Apple Silicon</li>
+            <li>macOS 12+</li>
+            <li>MIT license</li>
+          </ul>
+        </div>
+
+        <div class="hero-stage" data-reveal style="--d:200ms">
+          <div class="stage" aria-hidden="true">
+            <div class="stage-card">
+              <div class="stage-chrome">
+                <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+                <span class="stage-title">Notes</span>
+              </div>
+              <div class="stage-field" id="typefield"><span class="typed" id="typed"></span><span class="caret"></span></div>
+            </div>
+            <canvas class="wave" id="wave" width="520" height="88"></canvas>
+            <div class="pill" id="pill" data-state="idle">
+              <span class="pill-idle"><i></i><i></i><i></i></span>
+              <span class="pill-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+              <span class="pill-msg" id="pillmsg">Done</span>
+            </div>
+          </div>
+          <p class="sr-only">Animated demo: a sentence is dictated with filler words, Lirrly polishes it and pastes the clean version; an Arabic sentence follows, kept in its original dialect.</p>
+        </div>
+      </div>
+      <div class="hero-wash" aria-hidden="true"></div>
+    </section>
+
+    <!-- ============ HOW ============ -->
+    <section class="section" id="how">
+      <div class="shell">
+        <div class="sec-head">
+          <h2 class="display-2" data-reveal>Three seconds to&nbsp;<em>written.</em></h2>
+        </div>
+        <ol class="steps">
+          <li class="step" data-reveal>
+            <div class="step-stage" aria-hidden="true">
+              <span class="keycap kc-1">⌘</span><span class="keycap kc-2">⇧</span><span class="keycap kc-3">D</span>
+            </div>
+            <h3><span class="step-n">01</span> Press</h3>
+            <p>⌘⇧D from anywhere on your Mac. No window to find, no app to switch&nbsp;to.</p>
+          </li>
+          <li class="step" data-reveal style="--d:120ms">
+            <div class="step-stage" aria-hidden="true">
+              <span class="mic-ring"></span>
+              <svg class="mic-glyph" viewBox="0 0 24 24" width="30" height="30"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="9" y="3.5" width="6" height="10.5" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3"/></g></svg>
+            </div>
+            <h3><span class="step-n">02</span> Speak</h3>
+            <p>Say it how you&rsquo;d say it. Fillers, false starts, thinking out loud&nbsp;&mdash; all fine.</p>
+          </li>
+          <li class="step" data-reveal style="--d:240ms">
+            <div class="step-stage" aria-hidden="true">
+              <span class="paste-line"><span class="paste-text">On my way.</span><span class="paste-caret"></span></span>
+            </div>
+            <h3><span class="step-n">03</span> Pasted</h3>
+            <p>Polished text lands at your cursor. Your clipboard is restored, like nothing&nbsp;happened.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ ARABIC ============ -->
+    <section class="section band" id="arabic">
+      <div class="shell arabic-grid">
+        <div class="arabic-ar" lang="ar" dir="rtl">
+          <h2 class="display-2 ar-display" data-reveal>لهجتك&hellip; مو&nbsp;الفصحى.</h2>
+          <p class="ar-lede" data-reveal style="--d:100ms">تحافظ ليرلي على كلامك مثل ما قلته — بدون ما تحوّله لفصحى رسمية ولا تكسر جملتك.</p>
+          <p class="ar-type" data-reveal style="--d:180ms"><span id="artyped"></span><span class="caret caret-ink"></span></p>
+          <ul class="chips" data-reveal style="--d:260ms">
+            <li>حجازي</li><li>نجدي</li><li>مصري</li><li>شامي</li><li>خليجي</li>
+          </ul>
+        </div>
+        <div class="arabic-en">
+          <p class="eyebrow" data-reveal>Arabic-first</p>
+          <p class="body-l" data-reveal style="--d:80ms">
+            Dictation tools flatten Arabic into Modern Standard. Lirrly keeps your dialect —
+            Hijazi, Najdi, Egyptian, Levantine — the way you actually talk.
+          </p>
+          <p class="body-m" data-reveal style="--d:160ms">
+            Right-to-left history, dialect-preserving cleanup, and recognition tuned with your own
+            dictionary. Built by a native speaker who was tired of tools that couldn&rsquo;t keep&nbsp;up.
+          </p>
+        </div>
+      </div>
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <span>English</span><span lang="ar">العربية</span><span>Español</span><span>Français</span><span>Deutsch</span><span>Italiano</span><span>Português</span><span lang="hi">हिन्दी</span><span>Auto-detect</span>
+          <span>English</span><span lang="ar">العربية</span><span>Español</span><span>Français</span><span>Deutsch</span><span>Italiano</span><span>Português</span><span lang="hi">हिन्दी</span><span>Auto-detect</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRIVACY ============ -->
+    <section class="section" id="privacy">
+      <div class="shell">
+        <div class="sec-head split">
+          <h2 class="display-2" data-reveal>Private by architecture,<br />not by&nbsp;<em>promise.</em></h2>
+          <p class="body-m" data-reveal style="--d:120ms">There is no Lirrly server, no account, and no telemetry. The safest data is the data that never leaves.</p>
+        </div>
+        <ul class="cards">
+          <li class="card" data-reveal>
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="9" r="4.2"/><path d="M11.8 11.8 20 20m-3.5-.5V17h-2.5"/></g></svg>
+            <h3>Key in the Keychain</h3>
+            <p>Your API key lives in the macOS Keychain. The interface never sees it — not even once.</p>
+          </li>
+          <li class="card" data-reveal style="--d:90ms">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 5l8 6.5M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></g></svg>
+            <h3>History stays home</h3>
+            <p>Every dictation is a local file on your Mac. Search it, export it, or delete it — your call.</p>
+          </li>
+          <li class="card" data-reveal style="--d:180ms">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S4 12 4 12Z"/><path d="M3.5 3.5l17 17"/></g></svg>
+            <h3>No account. No analytics.</h3>
+            <p>Nothing to sign up for and nothing phoning home. Open the network monitor and check.</p>
+          </li>
+          <li class="card" data-reveal style="--d:270ms">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17c4 0 4-10 8-10h8m0 0-3-3m3 3-3 3"/></g></svg>
+            <h3>Audio goes one place</h3>
+            <p>Straight to the transcription engine you configured. Nowhere else, ever.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ TRANSFORMS ============ -->
+    <section class="section band" id="transforms">
+      <div class="shell">
+        <div class="sec-head">
+          <p class="eyebrow" data-reveal>New in 0.3</p>
+          <h2 class="display-2" data-reveal style="--d:60ms">Select. <span class="kbd-word">⌥T</span>. <em>Transformed.</em></h2>
+          <p class="body-m sec-sub" data-reveal style="--d:140ms">Select text in any app — an email, a doc, a chat — press ⌥T, and the active transform rewrites it in place.</p>
+        </div>
+        <div class="tdemo-wrap" data-reveal style="--d:200ms">
+          <div class="tdemo" aria-hidden="true">
+            <p class="tdemo-text"><span class="tsel" id="tsel">ok so i need the report by tmrw morning</span></p>
+            <div class="tpill" id="tpill"><kbd>⌥T</kbd><span id="tname">Formal</span></div>
+          </div>
+          <p class="sr-only">Animated demo: a rough sentence is selected and rewritten by transforms — made formal, fixed, or translated to Arabic — in place.</p>
+          <ul class="chips chips-center" id="tchips">
+            <li data-t="rewrite">Rewrite</li>
+            <li data-t="formal">Make formal</li>
+            <li data-t="grammar">Fix grammar</li>
+            <li data-t="summarize">Summarize</li>
+            <li data-t="translate">Translate</li>
+          </ul>
+          <p class="tnote" data-reveal>&hellip;or write your own transform in plain words.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TOUR ============ -->
+    <section class="section" id="tour">
+      <div class="shell">
+        <div class="sec-head split">
+          <h2 class="display-2" data-reveal>A home for your&nbsp;<em>voice.</em></h2>
+          <p class="body-m" data-reveal style="--d:120ms">History with honest words-per-minute, a personal dictionary that biases recognition, snippets, per-context styles, and insights — all local.</p>
+        </div>
+        <figure class="window" id="tiltwin" data-reveal>
+          <div class="window-chrome" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img src="img/hub-home.png" alt="The Lirrly Hub: a warm cream dashboard showing dictation stats, history and settings" width="1180" height="760" loading="lazy" decoding="async" />
+        </figure>
+        <div class="tour-row">
+          <figure class="minicard" data-reveal>
+            <img src="img/flowbar-dock.png" alt="The floating Lirrly bar expanded into its dock of controls" width="252" height="118" loading="lazy" decoding="async" />
+            <figcaption>The bar, at rest.</figcaption>
+          </figure>
+          <figure class="minicard" data-reveal style="--d:120ms">
+            <img src="img/lirrly-demo.gif" alt="Screen recording of a full dictation: pressing the shortcut, speaking, and polished text pasted into a document" width="600" height="280" loading="lazy" decoding="async" />
+            <figcaption>A dictation, start to finish.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ OPEN SOURCE ============ -->
+    <section class="section band" id="open">
+      <div class="shell oss-grid">
+        <div>
+          <h2 class="display-2" data-reveal>Free as in<br /><em>actually free.</em></h2>
+          <p class="body-m" data-reveal style="--d:100ms">
+            MIT-licensed and built in the open — read every line that touches your voice.
+            You bring a free Groq API key; there is no plan, no trial, no upsell hiding in a menu.
+          </p>
+          <p class="eyebrow roadmap-label" data-reveal style="--d:180ms">Being honest about what&rsquo;s next</p>
+          <ul class="chips" data-reveal style="--d:220ms">
+            <li class="chip-soon">Command mode</li>
+            <li class="chip-soon">Scratchpad</li>
+            <li class="chip-soon">Local engine — offline, $0</li>
+            <li class="chip-soon">Auto-updates</li>
+          </ul>
+        </div>
+        <a class="repo-card" href="https://github.com/m55h11r11/wispralt" data-reveal style="--d:140ms">
+          <div class="repo-head">
+            <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            <span class="repo-name">m55h11r11 / wispralt</span>
+          </div>
+          <p class="repo-desc">Free, open-source macOS dictation — Arabic-first. Tauri&nbsp;+&nbsp;Rust&nbsp;+&nbsp;React.</p>
+          <div class="repo-meta">
+            <span class="repo-pill" id="repostars">★ —</span>
+            <span class="repo-pill">MIT</span>
+            <span class="repo-view">View source →</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section" id="faq">
+      <div class="shell faq-shell">
+        <h2 class="display-2" data-reveal>Questions, <em>answered.</em></h2>
+        <div class="faq" data-reveal style="--d:120ms">
+          <details>
+            <summary>Is it really free?<span class="faq-x" aria-hidden="true"></span></summary>
+            <div class="faq-body"><div class="faq-a"><p>Yes — MIT-licensed, no account, no paywall, no “pro” tier. You connect your own free Groq API key for transcription, and that&rsquo;s the whole economy.</p></div></div>
+          </details>
+          <details>
+            <summary>Which languages does it handle?<span class="faq-x" aria-hidden="true"></span></summary>
+            <div class="faq-body"><div class="faq-a"><p>Everything Whisper is good at: English, Arabic — with dialects preserved — Spanish, French, German, Italian, Portuguese, Hindi, or auto-detect.</p></div></div>
+          </details>
+          <details>
+            <summary>Where does my audio go?<span class="faq-x" aria-hidden="true"></span></summary>
+            <div class="faq-body"><div class="faq-a"><p>From your microphone straight to the transcription engine you configured — Groq today, a local on-device engine on the roadmap. There is no Lirrly server in between, because there is no Lirrly server.</p></div></div>
+          </details>
+          <details>
+            <summary>Why do I need a Groq key?<span class="faq-x" aria-hidden="true"></span></summary>
+            <div class="faq-body"><div class="faq-a"><p>Lirrly has no backend, so you plug in your own key (free at console.groq.com). It&rsquo;s stored in the macOS Keychain and never shown to the interface again.</p></div></div>
+          </details>
+          <details>
+            <summary>Does it run on Intel Macs?<span class="faq-x" aria-hidden="true"></span></summary>
+            <div class="faq-body"><div class="faq-a"><p>Builds target Apple Silicon on macOS 12 or newer. Intel may compile from source, but it isn&rsquo;t tested or supported yet.</p></div></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CLOSER ============ -->
+    <section class="section closer">
+      <div class="shell closer-inner">
+        <h2 class="display closer-h" data-reveal>Stop typing.<br /><em>Start talking.</em></h2>
+        <div class="cta-row cta-center" data-reveal style="--d:120ms">
+          <a class="btn btn-ink btn-lg" href="https://github.com/m55h11r11/wispralt/releases" data-magnet>Download for macOS</a>
+        </div>
+        <p class="fine-line" data-reveal style="--d:200ms">Free forever · MIT · Your key, your Mac, your words</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="foot-grad" aria-hidden="true"></div>
+    <div class="shell foot-inner">
+      <div class="foot-brand">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span>Lirrly</span>
+        <p class="foot-tag">Dictation that keeps your voice.</p>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="https://github.com/m55h11r11/wispralt">GitHub</a>
+        <a href="https://github.com/m55h11r11/wispralt/releases">Releases</a>
+        <a href="https://github.com/m55h11r11/wispralt/issues">Issues</a>
+        <a href="https://github.com/m55h11r11/wispralt#readme">Docs</a>
+      </nav>
+      <p class="foot-made">Made in Jeddah <span lang="ar" dir="rtl">صُنع في جدة</span><br /><span class="foot-c">© 2026 Lirrly · MIT</span></p>
+    </div>
+  </footer>
+</body>
+</html>

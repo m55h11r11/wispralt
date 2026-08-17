@@ -1,0 +1,503 @@
+.flowbar {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 10px 13px;
+  background: transparent;
+  pointer-events: none;
+  overflow: visible;
+  color: #fff;
+}
+
+.flowbar * {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+.flow-handle {
+  width: 39px;
+  height: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #171717, #050505);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background 180ms ease, width 180ms ease;
+  animation: handleReveal 150ms cubic-bezier(0.2, 0.84, 0.18, 1) both;
+}
+
+.flow-handle:hover,
+.flow-handle:focus-visible {
+  width: 42px;
+  background: linear-gradient(180deg, #242424, #090909);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.dock-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transform-origin: center bottom;
+  will-change: opacity, transform, filter;
+  animation: dockReveal 190ms cubic-bezier(0.2, 0.84, 0.18, 1) both;
+}
+
+.dock-wrap.closing {
+  pointer-events: none;
+  animation: dockHide 170ms cubic-bezier(0.36, 0, 0.2, 1) both;
+}
+
+.dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.dock-menu-group {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(3, 3, 3, 0.97);
+  color: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.33), 0 3px 9px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.dock-inline-chevron {
+  width: 24px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(3, 3, 3, 0.97);
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.dock-inline-chevron:hover,
+.dock-inline-chevron:focus-visible {
+  background: rgba(255, 255, 255, 0.13);
+  outline: none;
+}
+
+.dock-inline-chevron:active {
+  transform: scale(0.96);
+}
+
+.dock-inline-chevron svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dock-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(3, 3, 3, 0.97);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.33), 0 3px 9px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.dock-btn[data-action="dictate"] {
+  width: 48px;
+}
+
+.dock-btn:hover,
+.dock-btn.hovered,
+.dock-btn.active,
+.dock-btn:focus-visible {
+  background: rgba(18, 18, 18, 0.98);
+  color: #ffffff;
+  outline: none;
+}
+
+.dock-menu-group .dock-btn,
+.dock-menu-group .dock-inline-chevron {
+  background: transparent;
+  box-shadow: none;
+}
+
+.dock-menu-group .dock-btn:hover,
+.dock-menu-group .dock-btn.hovered,
+.dock-menu-group .dock-btn.active,
+.dock-menu-group .dock-btn:focus-visible,
+.dock-menu-group .dock-inline-chevron:hover,
+.dock-menu-group .dock-inline-chevron:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dock-btn:active {
+  transform: scale(0.96);
+}
+
+.dock-btn svg,
+.sheet-row svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dock-btn[data-action="language"] svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dock-btn[data-action="dictate"] svg {
+  width: 15px;
+  height: 19px;
+}
+
+.dock-btn[data-action="polish"] svg {
+  width: 14px;
+  height: 14px;
+}
+
+.dock-btn[data-action="scratchpad"] svg {
+  width: 20px;
+  height: 20px;
+}
+
+.dock-tooltip {
+  position: absolute;
+  bottom: 54px;
+  z-index: 5;
+  min-width: max-content;
+  max-width: 164px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(6, 6, 6, 0.96);
+  color: rgba(255, 255, 255, 0.93);
+  font-size: 12px;
+  font-weight: 520;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26);
+  animation: tooltipIn 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.tooltip-language {
+  left: calc(50% - 60px);
+  transform: translateX(-50%);
+}
+
+.tooltip-dictate {
+  left: calc(50% - 14px);
+  transform: translateX(-50%);
+}
+
+.tooltip-polish {
+  left: calc(50% + 34px);
+  transform: translateX(-50%);
+}
+
+.tooltip-scratchpad {
+  left: calc(50% + 66px);
+  transform: translateX(-50%);
+}
+
+.options-sheet {
+  position: absolute;
+  left: 50%;
+  bottom: 54px;
+  z-index: 4;
+  width: 224px;
+  padding: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 14px;
+  background: rgba(252, 252, 251, 0.98);
+  color: #171717;
+  pointer-events: auto;
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  backdrop-filter: blur(22px) saturate(130%);
+  box-shadow: 0 19px 46px rgba(0, 0, 0, 0.22), 0 3px 10px rgba(0, 0, 0, 0.12);
+  transform: translateX(-50%);
+  animation: sheetIn 180ms cubic-bezier(0.2, 0.84, 0.18, 1) both;
+}
+
+.language-sheet {
+  width: 238px;
+}
+
+.scratch-sheet {
+  width: 184px;
+}
+
+.sheet-row {
+  width: 100%;
+  min-height: 35px;
+  display: grid;
+  grid-template-columns: 22px 1fr 18px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #202020;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 510;
+  line-height: 1.1;
+  text-align: left;
+}
+
+.sheet-row + .sheet-row {
+  margin-top: 2px;
+}
+
+.sheet-row:hover,
+.sheet-row:focus-visible {
+  background: rgba(0, 0, 0, 0.055);
+  outline: none;
+}
+
+.sheet-row.active {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.scratch-sheet .sheet-row {
+  grid-template-columns: 1fr;
+}
+
+.row-handle {
+  width: 20px;
+  color: #777;
+  font-size: 14px;
+  text-align: center;
+}
+
+.sheet-row svg {
+  width: 16px;
+  height: 16px;
+  justify-self: end;
+}
+
+.polish-sheet .sheet-row:last-child {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0 0 9px 9px;
+}
+
+.status-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 60px;
+  z-index: 4;
+  display: inline-flex;
+  min-height: 30px;
+  max-width: 320px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(6, 6, 6, 0.96);
+  color: rgba(255, 255, 255, 0.93);
+  font-size: 12px;
+  font-weight: 530;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  animation: toastIn 170ms cubic-bezier(0.2, 0.84, 0.18, 1) both;
+}
+
+.message-toast {
+  bottom: 43px;
+}
+
+.state-done .message-toast {
+  color: #9ff0cf;
+}
+
+.state-error .message-toast {
+  color: #ffb0b0;
+}
+
+.tiny-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  animation: spin 680ms linear infinite;
+}
+
+.recording-dock {
+  width: 67px;
+  height: 26px;
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid rgba(63, 60, 66, 0.82);
+  border-radius: 999px;
+  background: #000000;
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: dockReveal 180ms cubic-bezier(0.2, 0.84, 0.18, 1) both;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.recording-dock:hover,
+.recording-dock:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
+
+.recording-dock:active {
+  transform: scale(0.96);
+}
+
+.recording-bars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.recording-bar {
+  position: absolute;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: height 75ms ease-out;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes handleReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-1px) scaleX(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dockReveal {
+  from {
+    opacity: 0;
+    filter: blur(0.35px);
+    transform: translateY(17px) scale(0.54);
+  }
+  62% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-1px) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dockHide {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(0.3px);
+    transform: translateY(16px) scale(0.54);
+  }
+}
+
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes sheetIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(5px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* Actionable error toasts — the fix is one click away, not a treasure hunt. */
+.toast-action {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #9be8c8;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.toast-action:hover {
+  color: #c9f5e1;
+}

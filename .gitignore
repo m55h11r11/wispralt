@@ -1,0 +1,20 @@
+.context/
+.tmp/
+.playwright-mcp/
+.DS_Store
+
+# Local generated review/verification output
+archive-output/
+app-icon-output/
+lirrly/reports/
+
+# Reference screenshots are local-only design evidence, not source.
+design/progress/
+design/reference/
+
+# Agent continuity + QA docs are workspace-local, not part of the public product.
+CLAUDE.md
+MASTER-HANDOFF.md
+ARCHITECTURE.md
+handoffs/
+site-qa-output/
