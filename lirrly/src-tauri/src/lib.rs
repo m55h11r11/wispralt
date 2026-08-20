@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 mshrmnsr
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;

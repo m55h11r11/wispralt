@@ -3,7 +3,7 @@ name = "lirrly"
 version = "0.3.0"
 description = "Lirrly — voice dictation"
 authors = ["mshrmnsr"]
-license = "MIT"
+license = "AGPL-3.0-only"
 edition = "2021"
 
 [lib]

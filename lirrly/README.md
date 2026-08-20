@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/m55h11r11/wispralt/actions/workflows/ci.yml/badge.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20·%20Apple%20Silicon-lightgrey)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Version](https://img.shields.io/badge/version-0.3.0-orange)
 
 Free, open-source macOS dictation. Speak → Whisper transcribes → AI cleans up → pastes at your cursor. **No account. No cloud storage. Yours.**
@@ -73,4 +73,8 @@ Badged "Coming soon" in-app until real: **Command mode** (select text → *speak
 
 ## License
 
-[MIT](../LICENSE) — fork it, ship it, make it yours.
+[GNU AGPL-3.0](../LICENSE). Free and open-source: use it, study it, share it, and any
+distributed changes stay open under the same license. Copyright © 2026 mshrmnsr — as sole
+copyright holder the author reserves the right to offer the software under separate
+commercial terms (see [ADR-004](../docs/adr/004-licensing-agpl-and-monetization.md) and
+[CONTRIBUTING.md](../CONTRIBUTING.md)).

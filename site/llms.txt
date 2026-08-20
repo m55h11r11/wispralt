@@ -7,7 +7,7 @@
 - Transforms (v0.3): select text in any app, press ⌥T, and the active transform (rewrite, formal, grammar, summarize, translate, or custom) rewrites it in place.
 - Languages: English, Arabic (dialect-preserving), Spanish, French, German, Italian, Portuguese, Hindi, auto-detect.
 - Privacy: no account, no analytics, no Lirrly server. API key in the macOS Keychain; history stored locally.
-- Free: MIT license; users bring their own free Groq API key.
+- Free & open-source: AGPL-3.0 license; users bring their own free Groq API key. An optional paid Pro tier may arrive later; the open-source core stays free.
 
 ## Platform
 macOS 12+, Apple Silicon. Built with Tauri (Rust) + React.
