@@ -24,6 +24,7 @@ import {
 } from "../lib/store";
 import { listMicrophones } from "../lib/audio";
 import { transformText } from "../lib/engine";
+import { sendFeedback } from "../lib/telemetry";
 import {
   symbolsToAccelerator,
   DEFAULT_DICTATION_ACCELERATOR,
@@ -1664,6 +1665,86 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
 }
 
 /* ---------- Account ---------- */
+function FeedbackCard({ version }: { version: string }) {
+  const [msg, setMsg] = useState("");
+  const [email, setEmail] = useState("");
+  const [rating, setRating] = useState(0);
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function submit() {
+    if (!msg.trim() || state === "sending") return;
+    setState("sending");
+    const ok = await sendFeedback(msg, email || undefined, rating || undefined);
+    if (ok) {
+      setState("sent");
+      setMsg("");
+      setEmail("");
+      setRating(0);
+      window.setTimeout(() => setState("idle"), 3000);
+    } else {
+      setState("error");
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="row">
+        <div className="meta">
+          <label>Send feedback</label>
+          <p>Tell me what's working or what's broken — it reaches the developer directly.</p>
+        </div>
+        <div className="stars-input" role="radiogroup" aria-label="Rating">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="star-btn"
+              aria-label={`${n} star${n > 1 ? "s" : ""}`}
+              aria-pressed={rating === n}
+              onClick={() => setRating(n === rating ? 0 : n)}
+              style={{ color: n <= rating ? "#ffa946" : "var(--ink-35, #9d9c98)" }}
+            >
+              {n <= rating ? "★" : "☆"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding: "0 0 4px" }}>
+        <textarea
+          value={msg}
+          placeholder="What happened, or what would make Lirrly better?"
+          onChange={(e) => setMsg(e.target.value)}
+          rows={3}
+          style={{ width: "100%", resize: "vertical", marginBottom: 10 }}
+        />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="email"
+            value={email}
+            placeholder="Email (optional — only if you want a reply)"
+            onChange={(e) => setEmail(e.target.value)}
+            spellCheck={false}
+            style={{ flex: 1, minWidth: 200 }}
+          />
+          <button className="btn primary" onClick={() => void submit()} disabled={!msg.trim() || state === "sending"}>
+            {state === "sending" ? "Sending…" : state === "sent" ? "Thanks! ✓" : "Send"}
+          </button>
+        </div>
+        {state === "error" && (
+          <p className="sub" style={{ color: "var(--danger)", marginTop: 8 }}>
+            Couldn't send — check your connection and try again.
+          </p>
+        )}
+        {version && (
+          <p className="sub" style={{ marginTop: 8, fontSize: "0.8rem" }}>
+            Sent with your app version and macOS version to help reproduce issues.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Account({ s, update }: { s: AppSettings; update: Update }) {
   const [version, setVersion] = useState("");
   useEffect(() => {
@@ -1705,12 +1786,17 @@ function Account({ s, update }: { s: AppSettings; update: Update }) {
         </div>
         <div className="row">
           <div className="meta">
-            <label>Share anonymous usage data</label>
-            <p>Nothing is collected yet — this saves your preference for when analytics exist.</p>
+            <label>Send anonymous crash reports</label>
+            <p>
+              Off by default. When on, Lirrly sends only an anonymous ID, app/macOS version,
+              and error details when something breaks — never transcripts, audio, or your key.
+              Helps fix bugs faster.
+            </p>
           </div>
           <Toggle on={s.shareAnalytics} onClick={() => update({ shareAnalytics: !s.shareAnalytics })} />
         </div>
       </div>
+      <FeedbackCard version={version} />
       <div className="card">
         <div className="row">
           <div className="meta">

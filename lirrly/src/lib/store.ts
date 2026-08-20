@@ -243,6 +243,21 @@ export function saveSettings(s: AppSettings): void {
   localStorage.setItem(SKEY, JSON.stringify(s));
 }
 
+/** A random, anonymous per-install id — used only to group opt-in crash reports
+ *  (never tied to identity). Generated once and kept in localStorage. */
+export function getInstallId(): string {
+  const KEY = "lirrly.install_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 /** The transform the ⌥T shortcut runs. A deleted custom id falls back to the
  *  first built-in so the shortcut can never point at nothing. */
 export function resolveActiveTransform(s: AppSettings): Transform {

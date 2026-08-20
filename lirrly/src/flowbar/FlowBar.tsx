@@ -9,6 +9,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { startRecording, type Recorder } from "../lib/audio";
 import { transcribe, transformText } from "../lib/engine";
+import { reportError } from "../lib/telemetry";
 import {
   hasTauriRuntime,
   loadSettings,
@@ -359,6 +360,8 @@ export default function FlowBar() {
   /** Map raw engine/Rust errors to actionable, human toasts. */
   function failFromError(e: unknown, fallbackMsg = "Transcription failed") {
     const msg = String(e);
+    // Opt-in only (gated inside reportError on `shareAnalytics`); never blocks the UI.
+    reportError(fallbackMsg.toLowerCase().replace(/\s+/g, "_"), msg);
     const openSettings: ToastAction = {
       label: "Open Settings",
       run: () => openSettingsSection("settings"),

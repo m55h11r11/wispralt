@@ -1,6 +1,6 @@
 [package]
 name = "lirrly"
-version = "0.3.0"
+version = "0.3.1"
 description = "Lirrly — voice dictation"
 authors = ["mshrmnsr"]
 license = "AGPL-3.0-only"

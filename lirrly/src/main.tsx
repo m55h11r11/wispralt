@@ -5,6 +5,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles/theme.css";
 import FlowBar from "./flowbar/FlowBar";
 import Settings from "./settings/Settings";
+import { reportError } from "./lib/telemetry";
+
+// Opt-in crash capture (gated on `shareAnalytics` inside reportError). Captures
+// only the error signature/message — no transcripts, audio, or keys.
+window.addEventListener("error", (e) => {
+  reportError("uncaught_error", `${e.message} @ ${e.filename}:${e.lineno}`);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  reportError("unhandled_rejection", String(e.reason));
+});
 
 // Pick the view by Tauri window label. `?view=` overrides it (used for design
 // previews in a plain browser, where the Tauri runtime isn't present).

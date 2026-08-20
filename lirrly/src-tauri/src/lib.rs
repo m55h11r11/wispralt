@@ -434,6 +434,96 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
     captured.ok_or_else(|| "no_selection".to_string())
 }
 
+/// Opt-in insights endpoint (self-hosted). The client only ever posts here when
+/// the user has turned on "share analytics" — see `shareAnalytics` in the app.
+const INSIGHTS_URL: &str = "https://insights.lirrly.com";
+
+/// Coarse macOS product version (e.g. "14.5") for grouping reports. Best-effort.
+fn os_version() -> String {
+    std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Send an opt-in, anonymized crash/error report. No-op unless `enabled`.
+/// Fire-and-forget: failures are swallowed so telemetry can never disrupt the app.
+#[tauri::command]
+async fn report_event(
+    enabled: bool,
+    install_id: String,
+    kind: String,
+    signature: Option<String>,
+    message: Option<String>,
+    context: Option<String>,
+) -> Result<(), String> {
+    if !enabled {
+        return Ok(());
+    }
+    let payload = json!({
+        "install_id": install_id,
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "os_version": os_version(),
+        "kind": kind,
+        "signature": signature,
+        "message": message,
+        "context": context,
+    });
+    if let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        let _ = client
+            .post(format!("{INSIGHTS_URL}/v1/report"))
+            .json(&payload)
+            .send()
+            .await;
+    }
+    Ok(())
+}
+
+/// Send user-initiated feedback. Unlike reports this surfaces success/failure so
+/// the UI can confirm. Carries only what the user typed (+ optional email/rating).
+#[tauri::command]
+async fn send_feedback(
+    install_id: String,
+    message: String,
+    email: Option<String>,
+    rating: Option<u8>,
+) -> Result<(), String> {
+    let message = message.trim().to_string();
+    if message.is_empty() {
+        return Err("empty_feedback".into());
+    }
+    let payload = json!({
+        "install_id": install_id,
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "os_version": os_version(),
+        "message": message,
+        "email": email,
+        "rating": rating,
+    });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .post(format!("{INSIGHTS_URL}/v1/feedback"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|_| "network".to_string())?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("server_{}", resp.status().as_u16()))
+    }
+}
+
 /// Webview event fired by each shortcut action; `None` marks unknown actions.
 fn shortcut_event_for_action(action: &str) -> Option<&'static str> {
     match action {
@@ -667,6 +757,8 @@ pub fn run() {
             cleanup_text,
             transform_text,
             capture_selection,
+            report_event,
+            send_feedback,
             paste_text,
             show_flowbar,
             hide_flowbar,
