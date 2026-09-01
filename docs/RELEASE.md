@@ -1,16 +1,24 @@
 # Lirrly Release Runbook (signing + notarization)
 
-One-time prerequisites (user actions):
+One-time prerequisites — **DONE 2026-09-01** (kept for disaster recovery):
 
-1. **Apple Developer Program** — enroll at developer.apple.com ($99/year).
-2. **Developer ID Application certificate** — Xcode → Settings → Accounts →
-   Manage Certificates → "+" → *Developer ID Application*. Verify with:
+1. **Apple Developer Program** — enrolled; team `P7NJPZ5669` (meshari almansori).
+2. **Developer ID Application certificate** — issued via the developer portal
+   (G2 Sub-CA, expires 2031-09-02) from the CSR in `signing/`. The identity
+   lives in a dedicated keychain `~/Library/Keychains/lirrly-sign.keychain-db`
+   (password in `signing/keychain.pass`, gitignored), already on the user
+   keychain search list with promptless codesign access. Verify with:
    ```bash
-   security find-identity -v -p codesigning
-   # → "Developer ID Application: <Name> (<TEAMID>)"
+   security find-identity -v -p codesigning ~/Library/Keychains/lirrly-sign.keychain-db
+   # → "Developer ID Application: meshari almansori (P7NJPZ5669)"
    ```
-3. **App-specific password** for notarization — appleid.apple.com → Sign-In &
-   Security → App-Specific Passwords (or use an App Store Connect API key).
+3. **Notarization credential** — App Store Connect **team API key**
+   `lirrly-sign`, Key ID `XLT95RUR83`, Admin, Issuer
+   `a471a2a7-86ad-4a5a-857f-55931318f801`; `.p8` at
+   `signing/AuthKey_XLT95RUR83.p8` (gitignored; backup copy in ~/Downloads).
+   Note: Developer ID **cert creation** is Account-Holder-only — team keys get
+   403 from the API; use the portal UI (Certificates → add → Developer ID
+   Application → G2 Sub-CA) if the cert ever needs reissuing.
 
 ## Per-release steps
 
@@ -26,10 +34,11 @@ npm run build && npm run lint && npm test
 
 # 3. Signed + notarized build (signing config lives in tauri.conf.json:
 #    hardenedRuntime + Lirrly.entitlements; identity/notary come from env)
-export APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"
-export APPLE_ID="you@example.com"
-export APPLE_PASSWORD="app-specific-password"
-export APPLE_TEAM_ID="<TEAMID>"
+export APPLE_SIGNING_IDENTITY="Developer ID Application: meshari almansori (P7NJPZ5669)"
+export APPLE_API_ISSUER="a471a2a7-86ad-4a5a-857f-55931318f801"
+export APPLE_API_KEY="XLT95RUR83"
+export APPLE_API_KEY_PATH="$(git rev-parse --show-toplevel)/signing/AuthKey_XLT95RUR83.p8"
+security unlock-keychain -p "$(cat ../signing/keychain.pass)" ~/Library/Keychains/lirrly-sign.keychain-db
 npm run tauri build
 
 # 4. Verify
