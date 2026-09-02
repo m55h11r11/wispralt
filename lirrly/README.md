@@ -3,7 +3,7 @@
 ![CI](https://github.com/m55h11r11/wispralt/actions/workflows/ci.yml/badge.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20·%20Apple%20Silicon-lightgrey)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Version](https://img.shields.io/badge/version-0.3.0-orange)
+![Version](https://img.shields.io/badge/version-0.4.0-orange)
 
 Free, open-source macOS dictation. Speak → Whisper transcribes → AI cleans up → pastes at your cursor. **No account. No cloud storage. Yours.**
 
@@ -40,6 +40,21 @@ Inspired by Wispr Flow; built independently with Tauri. Not affiliated with Wisp
 - Rust owns: Groq API calls (key never reaches the webview), Keychain, global shortcut, paste synthesis (enigo), accessibility preflight, tray
 - `src/lib/engine.ts` is the engine boundary — a local whisper.cpp backend can slot in behind it (roadmap)
 
+## Install
+
+Download the latest signed `.dmg` from [Releases](https://github.com/m55h11r11/wispralt/releases/latest),
+or use Homebrew:
+
+```bash
+brew install --cask m55h11r11/lirrly/lirrly
+```
+
+Builds are Developer ID-signed and notarized by Apple, so they open with no Gatekeeper
+warning. Lirrly keeps itself up to date from v0.4.0 onward — check manually any time via
+**Settings → Account → Check for updates**.
+
+Requires an Apple Silicon Mac on macOS 12 (Monterey) or later.
+
 ## Run It
 
 ```bash
@@ -69,7 +84,7 @@ CI runs all of the above on every push (`.github/workflows/ci.yml`). Release/sig
 
 ## Roadmap (honest)
 
-Badged "Coming soon" in-app until real: **Command mode** (select text → *speak* the instruction → rewrite in place; the typed-transform half shipped in v0.3), **Scratchpad**, per-app context auto-styles, hold-to-talk, local whisper.cpp engine (offline/$0 — design in [ADR-003](../docs/adr/003-local-streaming-engine.md)), update notifications, and a live recording-state tray glyph. Distribution: notarized direct download, not the Mac App Store ([ADR-002](../docs/adr/002-distribution-developer-id-not-mas.md)).
+Badged "Coming soon" in-app until real: **Command mode** (select text → *speak* the instruction → rewrite in place; the typed-transform half shipped in v0.3), **Scratchpad**, per-app context auto-styles, hold-to-talk, local whisper.cpp engine (offline/$0 — design in [ADR-003](../docs/adr/003-local-streaming-engine.md)), and a live recording-state tray glyph. Distribution: notarized direct download, not the Mac App Store ([ADR-002](../docs/adr/002-distribution-developer-id-not-mas.md)).
 
 ## License
 

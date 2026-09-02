@@ -22,6 +22,38 @@ One-time prerequisites — **DONE 2026-09-01** (kept for disaster recovery):
 
 ## Per-release steps
 
+**The whole release is one command:**
+
+```bash
+./scripts/release.sh 0.4.1 --notes signing/release-notes-0.4.1.md
+```
+
+It refuses to run on a dirty tree, then bumps all three version files, runs every gate,
+builds signed + notarized, verifies Gatekeeper trust, generates `latest.json` for the
+auto-updater, commits + tags, publishes the GitHub release with all four assets, and
+bumps the Homebrew cask in `homebrew-lirrly/` before pushing the tap.
+
+Afterwards, push the clean public cut to `main` (private dev docs excluded) — see
+"Public pushes" in `MASTER-HANDOFF.md`.
+
+### Updater signing (separate from Apple signing)
+
+Updates are verified with our own minisign keypair, independent of Apple's Developer ID:
+`signing/updater.key` (+ `signing/updater.pass`), public key committed in
+`tauri.conf.json` under `plugins.updater.pubkey`.
+
+> **Losing `signing/updater.key` breaks auto-updates permanently for every installed
+> copy** — a new key can't sign updates the installed apps will accept, so every user
+> would have to reinstall by hand. It is not recoverable from Apple or GitHub. Back it up.
+
+Release assets that must be present for updates to work:
+`Lirrly_<v>_aarch64.dmg`, `Lirrly_<v>_aarch64.app.tar.gz`, and `latest.json`
+(pointing at the tarball, carrying the `.sig` contents).
+
+## Manual fallback
+
+If the script fails partway, these are the same steps by hand:
+
 ```bash
 cd lirrly
 

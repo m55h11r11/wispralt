@@ -337,3 +337,21 @@
     })
     .catch(() => {});
 })();
+
+/* ---------- Copy-to-clipboard for the Homebrew one-liner ---------- */
+document.querySelectorAll('.brew-copy').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy || '');
+      const original = btn.textContent;
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1600);
+    } catch {
+      /* clipboard blocked — the command is selectable next to the button */
+    }
+  });
+});

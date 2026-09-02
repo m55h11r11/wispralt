@@ -1340,3 +1340,52 @@ details[open] .faq-body {
     animation: none;
   }
 }
+
+/* ---------- Homebrew one-liner ---------- */
+.brew {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 0;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  max-width: 100%;
+}
+.brew code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.84rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.brew code::-webkit-scrollbar {
+  display: none;
+}
+.brew-copy {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink-35);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease;
+  touch-action: manipulation;
+}
+.brew-copy:hover {
+  color: inherit;
+  border-color: var(--ink-35);
+}
+.brew-copy.copied {
+  color: var(--accent-deep, inherit);
+  border-color: currentColor;
+}
+.cta-center .brew {
+  margin-top: 24px;
+}

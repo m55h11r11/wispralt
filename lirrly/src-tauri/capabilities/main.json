@@ -11,6 +11,8 @@
     "global-shortcut:default",
     "store:default",
     "autostart:default",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

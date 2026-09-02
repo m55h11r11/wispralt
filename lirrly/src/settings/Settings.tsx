@@ -4,6 +4,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
+import { checkForUpdate, installUpdate, restartApp } from "../lib/updater";
 import {
   DEFAULTS,
   hasTauriRuntime,
@@ -1745,6 +1746,100 @@ function FeedbackCard({ version }: { version: string }) {
   );
 }
 
+type UpdateState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "current" }
+  | { kind: "available"; version: string }
+  | { kind: "downloading"; percent: number | null }
+  | { kind: "installed" }
+  | { kind: "error"; message: string };
+
+function UpdateCard({ version }: { version: string }) {
+  const [state, setState] = useState<UpdateState>({ kind: "idle" });
+
+  // One quiet check when the Hub opens. It never downloads on its own —
+  // finding an update only changes the label on the button.
+  useEffect(() => {
+    void checkForUpdate()
+      .then((found) => {
+        if (found) setState({ kind: "available", version: found.version });
+      })
+      .catch(() => {
+        /* offline or GitHub unreachable — stay silent until asked */
+      });
+  }, []);
+
+  async function check() {
+    setState({ kind: "checking" });
+    try {
+      const found = await checkForUpdate();
+      setState(found ? { kind: "available", version: found.version } : { kind: "current" });
+    } catch (err) {
+      setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  async function install() {
+    setState({ kind: "downloading", percent: 0 });
+    try {
+      await installUpdate((percent) => setState({ kind: "downloading", percent }));
+      setState({ kind: "installed" });
+    } catch (err) {
+      setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  const busy = state.kind === "checking" || state.kind === "downloading";
+  const label =
+    state.kind === "checking"
+      ? "Checking…"
+      : state.kind === "downloading"
+        ? state.percent === null
+          ? "Downloading…"
+          : `Downloading ${state.percent}%`
+        : state.kind === "available"
+          ? "Update now"
+          : state.kind === "installed"
+            ? "Restart"
+            : "Check for updates";
+
+  return (
+    <div className="card">
+      <div className="row">
+        <div className="meta">
+          <label>Version</label>
+          <p>
+            Lirrly {version || "—"}
+            {state.kind === "available" && ` · ${state.version} available`}
+            {state.kind === "current" && " · up to date"}
+            {state.kind === "installed" && " · restart to finish"}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {state.kind === "available" && <span className="pillstat ok">New</span>}
+          <button
+            className={state.kind === "available" || state.kind === "installed" ? "btn primary" : "btn"}
+            disabled={busy}
+            onClick={() => {
+              if (state.kind === "available") void install();
+              else if (state.kind === "installed") void restartApp();
+              else void check();
+            }}
+          >
+            {label}
+          </button>
+        </div>
+      </div>
+      {state.kind === "error" && (
+        <p className="sub" style={{ color: "var(--danger)", marginTop: 8 }}>
+          Couldn’t update — {state.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Account({ s, update }: { s: AppSettings; update: Update }) {
   const [version, setVersion] = useState("");
   useEffect(() => {
@@ -1797,14 +1892,7 @@ function Account({ s, update }: { s: AppSettings; update: Update }) {
         </div>
       </div>
       <FeedbackCard version={version} />
-      <div className="card">
-        <div className="row">
-          <div className="meta">
-            <label>Version</label>
-            <p>Lirrly {version || "—"} · early build</p>
-          </div>
-        </div>
-      </div>
+      <UpdateCard version={version} />
     </>
   );
 }

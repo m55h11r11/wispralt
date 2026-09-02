@@ -19,3 +19,6 @@ ARCHITECTURE.md
 handoffs/
 site-qa-output/
 signing/
+
+# Local checkout of the Homebrew tap (its own git repo)
+homebrew-lirrly/
