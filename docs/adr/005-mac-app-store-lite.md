@@ -60,6 +60,9 @@ was proven end to end with a spike build:
 | Entitlements on the signed binary | `app-sandbox`, `device.audio-input`, `network.client`, `application-identifier`, `team-identifier`, `keychain-access-groups` — all verified present |
 | `embedded.provisionprofile` | embedded in the bundle |
 | Signed `.pkg` via `productbuild` | built; chain verified with `pkgutil --check-signature` |
+| App Store Connect app record | **created** — "Lirrly Lite", app id `6807936071`, SKU `LIRRLYLITE001`, macOS, en-US |
+| Upload to App Store Connect | **succeeded** via Transporter (`altool` no longer ships with Xcode) |
+| Apple's automated processing | **`processingState: VALID`** — the sandboxed Tauri binary passes Apple's validation |
 
 The harness lives in `lirrly/src-tauri/tauri.mas.conf.json` +
 `lirrly/src-tauri/LirrlyLite.entitlements`.
@@ -79,10 +82,20 @@ This settles the architecture question: Lite must be **its own crate with its ow
 `Cargo.toml`**, not a config override over the main app's crate. An override mutates
 shared state and will eventually ship a broken main build.
 
-**The remaining blocker is not technical.** Apple's API returns
-`403 — The resource 'apps' does not allow 'CREATE'`, so the App Store Connect *app
-record* must be created by hand in the web UI before any package can be validated or
-uploaded. Everything after that (validate, upload, metadata) is automatable.
+The app record had to be created by hand in the web UI — Apple's API refuses it
+(`403 — The resource 'apps' does not allow 'CREATE'`). That is done. **The full pipeline
+from source to an accepted App Store Connect build is now proven.**
+
+> 🛑 **The uploaded build must never be submitted for review.** It is the spike: the full
+> app repackaged as sandboxed. It passed *automated* processing because the private-API
+> Cargo feature was compiled out, but it still contains the Accessibility and synthetic-paste
+> code paths, which do nothing under the sandbox. Submitting it would earn a deserved
+> rejection. Replace it with the real Lite build first.
+
+Remaining work is ordinary product work, not unknowns: extract `lirrly-core`, build Lite as
+its own crate, then App Store Connect metadata (description, keywords, screenshots at
+1280×800, age rating, privacy questionnaire pointing at https://lirrly.com/privacy.html,
+and a demo Groq key in the App Review notes).
 
 ## Consequences
 
