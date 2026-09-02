@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Lirrly</title>
+  <meta name="description" content="Lirrly's privacy policy: no account, no tracking, no Lirrly server. Your API key stays in the macOS Keychain and your history stays on your Mac." />
+  <link rel="canonical" href="https://lirrly.com/privacy.html" />
+  <meta name="theme-color" content="#ffffeb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)" />
+  <meta name="robots" content="index, follow" />
+
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png" />
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
+
+  <link rel="preload" href="fonts/eb-garamond-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="shell nav-inner">
+      <a class="brand" href="/" aria-label="Lirrly — home">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="brand-name" translate="no">Lirrly</span>
+      </a>
+      <div class="nav-cta">
+        <a class="btn btn-ink btn-sm" href="/">Back to Lirrly</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="section">
+      <div class="shell legal">
+        <h1 class="display-2">Privacy Policy</h1>
+        <p class="body-m">Last updated 2 September 2026. This policy covers the Lirrly macOS app and lirrly.com.</p>
+
+        <h2>The short version</h2>
+        <p>Lirrly has no account system, no tracking, and no Lirrly-operated server in the dictation path. Your dictation history and settings stay on your Mac. Your API key stays in the macOS Keychain. We cannot read any of it.</p>
+
+        <h2>What stays on your device</h2>
+        <ul>
+          <li><strong>Your API key</strong> — stored in the macOS Keychain. It is sent only to the transcription provider you configured (Groq), never to us.</li>
+          <li><strong>Dictation history</strong> — a local file on your Mac. You can search, export, or delete it at any time, or turn history off entirely in Settings.</li>
+          <li><strong>Settings, dictionary, snippets and transforms</strong> — local files. Nothing is synced.</li>
+        </ul>
+
+        <h2>What leaves your device</h2>
+        <p>When you dictate, your audio is sent directly from your Mac to <a href="https://groq.com/privacy-policy/" rel="noopener">Groq</a> for transcription, and the resulting text is sent to Groq for cleanup. This happens with the API key you supplied, under Groq's privacy policy. Lirrly does not proxy, copy, or retain this traffic.</p>
+
+        <h2>Optional crash reports and feedback</h2>
+        <p><strong>Off by default.</strong> If you turn on “Send anonymous crash reports” in Settings, Lirrly sends an anonymous install identifier, the app and macOS version, and error details to a server operated by Lirrly's developer. It never sends transcripts, audio, clipboard contents, or your API key. Feedback you type into the in-app form is sent only when you press Send, along with the optional email address you provide. You can turn this off at any time; nothing is sent while it is off.</p>
+
+        <h2>The website</h2>
+        <p>lirrly.com is a static site hosted on GitHub Pages. It sets no cookies and runs no analytics. GitHub may log requests as part of serving the site — see <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>.</p>
+
+        <h2>Children</h2>
+        <p>Lirrly is not directed at children under 13 and does not knowingly collect personal information from them.</p>
+
+        <h2>Your rights</h2>
+        <p>Because Lirrly holds no account and stores your content locally, you can exercise deletion yourself: clear history in Settings, remove the Keychain entry, and delete the app. For anything sent via optional crash reports or feedback, email the address below and it will be deleted on request.</p>
+
+        <h2>Changes</h2>
+        <p>Material changes to this policy will be noted here with a new “last updated” date, and in the release notes of the version that changes behaviour.</p>
+
+        <h2>Contact</h2>
+        <p>Questions or deletion requests: <a href="https://github.com/m55h11r11/wispralt/issues" rel="noopener">open an issue on GitHub</a>, or use the in-app feedback form in Settings → Account.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="foot-grad" aria-hidden="true"></div>
+    <div class="shell foot-inner">
+      <div class="foot-brand">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span>Lirrly</span>
+        <p class="foot-tag">Dictation that keeps your voice.</p>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="https://github.com/m55h11r11/wispralt">GitHub</a>
+        <a href="https://github.com/m55h11r11/wispralt/releases">Releases</a>
+        <a href="https://github.com/m55h11r11/wispralt/issues">Issues</a>
+      </nav>
+      <p class="foot-made">Made in Jeddah <span lang="ar" dir="rtl">صُنع في جدة</span><br /><span class="foot-c">© 2026 Lirrly · AGPL-3.0</span></p>
+    </div>
+  </footer>
+</body>
+</html>

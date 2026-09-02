@@ -47,3 +47,10 @@ later; `tauri-plugin-updater` for updates (targeted v0.3.x).
 Apple ships sandbox-compatible system-wide text insertion, or a deliberately
 crippled "file transcription only" MAS companion ever justifies its
 maintenance cost.
+
+## Addendum (2026-09-02)
+
+This ADR's conclusion stands **for the full app** and is unchanged. It does not forbid a
+separate, reduced, sandboxed product: see
+[ADR-005](005-mac-app-store-lite.md), which adds "Lirrly Lite" as an App Store funnel
+while the full app remains a notarized direct download.

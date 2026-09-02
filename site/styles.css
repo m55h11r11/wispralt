@@ -1399,3 +1399,38 @@ details[open] .faq-body {
 .cta-center .brew {
   margin-top: 24px;
 }
+
+/* ---------- Legal pages ---------- */
+.legal {
+  max-width: 68ch;
+}
+.legal h1 {
+  margin: 0 0 10px;
+}
+.legal h2 {
+  font-family: var(--serif);
+  font-size: 1.45rem;
+  font-weight: 500;
+  margin: 40px 0 10px;
+}
+.legal p,
+.legal li {
+  color: var(--ink-70);
+  line-height: 1.7;
+}
+.legal ul {
+  padding-left: 1.1em;
+  margin: 0 0 4px;
+}
+.legal li {
+  margin-bottom: 8px;
+}
+.legal a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.legal a:hover {
+  color: var(--teal);
+}
