@@ -50,6 +50,30 @@ Release assets that must be present for updates to work:
 `Lirrly_<v>_aarch64.dmg`, `Lirrly_<v>_aarch64.app.tar.gz`, and `latest.json`
 (pointing at the tarball, carrying the `.sig` contents).
 
+
+## Lirrly Lite (Mac App Store)
+
+Separate product, separate crate, separate keychain service — see
+[ADR-005](adr/005-mac-app-store-lite.md).
+
+```bash
+./scripts/release-lite.sh            # build + sign + package, stop for inspection
+./scripts/release-lite.sh --upload   # ... and upload to App Store Connect
+```
+
+It gates on the frontend build, clippy/fmt, and the core crate's tests, then verifies the
+sandbox entitlements, the embedded provisioning profile and the Apple Distribution
+signature before packaging. Uploads go through **Transporter**
+(`/Applications/Transporter.app`) because `altool` no longer ships with Xcode.
+
+App Store facts: app id `6807936071`, bundle `com.mshrmnsr.lirrly-lite`, provisioning
+profile `signing/lirrly-lite.provisionprofile`. Metadata copy lives in
+`docs/appstore/lirrly-lite-metadata.md`.
+
+> A Mac-App-Store-provisioned build is SIGKILLed if launched outside the store — that is
+> normal. For local smoke tests build with `--config src-tauri/tauri.localtest.conf.json`,
+> which swaps in identical sandbox entitlements minus the App Store identifiers.
+
 ## Manual fallback
 
 If the script fails partway, these are the same steps by hand:

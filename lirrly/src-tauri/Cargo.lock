@@ -2238,9 +2238,8 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 name = "lirrly"
 version = "0.4.0"
 dependencies = [
- "base64 0.22.1",
  "enigo",
- "keyring",
+ "lirrly-core",
  "macos-accessibility-client",
  "reqwest 0.12.28",
  "serde",
@@ -2256,6 +2255,16 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "tokio",
+]
+
+[[package]]
+name = "lirrly-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde_json",
 ]
 
 [[package]]

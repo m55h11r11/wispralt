@@ -1,0 +1,13 @@
+[package]
+name = "lirrly-core"
+version = "0.1.0"
+description = "Shared Lirrly pipeline: Groq transcription, cleanup, and transforms"
+authors = ["mshrmnsr"]
+license = "AGPL-3.0-only"
+edition = "2021"
+
+[dependencies]
+base64 = "0.22"
+keyring = { version = "3", features = ["apple-native"] }
+reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
+serde_json = "1"

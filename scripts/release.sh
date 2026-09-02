@@ -38,7 +38,7 @@ done
 [ -f "$KEYCHAIN" ] || die "signing keychain not found: $KEYCHAIN"
 command -v gh >/dev/null || die "gh CLI not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated"
-git -C "$ROOT" tag -l "v$VERSION" | grep -q . && die "tag v$VERSION already exists"
+[ -z "$(git -C "$ROOT" tag -l "v$VERSION")" ] || die "tag v$VERSION already exists"
 echo "  ok — releasing v$VERSION"
 
 step "Bumping version to $VERSION"
@@ -78,8 +78,9 @@ for f in "$DMG" "$TARBALL" "$SIG"; do [ -f "$f" ] || die "expected artifact miss
 
 step "Verifying Gatekeeper trust"
 codesign --verify --deep --strict "$BUNDLE/macos/Lirrly.app"
-spctl --assess --type exec -vv "$BUNDLE/macos/Lirrly.app" 2>&1 | grep -q "source=Notarized Developer ID" \
-  || die "app is not notarized"
+# Capture first: `cmd | grep -q` would SIGPIPE cmd and trip `set -o pipefail`.
+ASSESS="$(spctl --assess --type exec -vv "$BUNDLE/macos/Lirrly.app" 2>&1 || true)"
+case "$ASSESS" in *"source=Notarized Developer ID"*) ;; *) die "app is not notarized" ;; esac
 xcrun stapler validate "$BUNDLE/macos/Lirrly.app" >/dev/null || die "notarization ticket not stapled"
 echo "  ok — notarized and stapled"
 

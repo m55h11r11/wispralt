@@ -1,6 +1,6 @@
 # ADR-005: A sandboxed "Lirrly Lite" for the Mac App Store
 
-- **Status:** Accepted (packaging proven, submission not yet started)
+- **Status:** Accepted — Lite v1.0.0 built and accepted by App Store Connect (`VALID`); awaiting metadata + submission
 - **Date:** 2026-09-02
 - **Supersedes:** nothing. **Amends:** [ADR-002](002-distribution-developer-id-not-mas.md)
 
@@ -71,6 +71,32 @@ The harness lives in `lirrly/src-tauri/tauri.mas.conf.json` +
 > It is not submittable: the feature-stripping and `lirrly-core` extraction above must
 > land first.
 
+### Built (2026-09-02)
+
+`crates/lirrly-core` now holds the Groq pipeline and both Arabic dialect-preserving
+prompts; the full app and Lite each depend on it, so that prompt exists once. `lirrly-lite/`
+is a separate crate with its own `Cargo.toml`, config, entitlements and frontend.
+
+Verified on the shipped bundle, not assumed:
+
+- Sandbox entitlements, embedded provisioning profile, Apple Distribution signature — all present.
+- `strings` on the binary finds **zero** occurrences of `AXIsProcessTrusted`, `CGEventPost`
+  or `enigo` — the Accessibility and synthetic-paste code is genuinely absent, unlike the spike.
+- The sandboxed build runs: macOS created `~/Library/Containers/com.mshrmnsr.lirrly-lite`.
+  (The App-Store-provisioned build is SIGKILLed on launch outside the store, which is
+  expected; a Developer ID-signed variant with identical sandbox entitlements is used for
+  local smoke tests.)
+- Uploaded via Transporter → **`processingState: VALID`** as version 1.0.0. The earlier
+  spike build was marked **expired** so it can never be submitted by mistake.
+
+### Where the code lives
+
+`lirrly-lite/` is **excluded from the public repository**, following ADR-004's rule that
+proprietary code never mixes into the AGPL tree (the same treatment as `insights/`).
+`crates/lirrly-core` *is* public and AGPL — the author, as sole copyright holder, also uses
+it under proprietary terms inside Lite, which is exactly the dual-licensing position
+ADR-004 established.
+
 ### Gotcha found during the spike (drives the architecture)
 
 Building with `--config tauri.mas.conf.json` **rewrote the shared `Cargo.toml`**: Tauri's
@@ -92,10 +118,11 @@ from source to an accepted App Store Connect build is now proven.**
 > code paths, which do nothing under the sandbox. Submitting it would earn a deserved
 > rejection. Replace it with the real Lite build first.
 
-Remaining work is ordinary product work, not unknowns: extract `lirrly-core`, build Lite as
-its own crate, then App Store Connect metadata (description, keywords, screenshots at
-1280×800, age rating, privacy questionnaire pointing at https://lirrly.com/privacy.html,
-and a demo Groq key in the App Review notes).
+Remaining work needs a human: paste the metadata from
+`docs/appstore/lirrly-lite-metadata.md` into App Store Connect, capture screenshots,
+generate a throwaway Groq key for the App Review notes, and accept the updated Apple
+Developer Program License Agreement (Apple blocks submission until the Account Holder
+does).
 
 ## Consequences
 
