@@ -434,6 +434,11 @@ summary {
   gap: clamp(36px, 6vw, 80px);
   align-items: center;
 }
+.hero-copy {
+  /* Grid items default to min-width:auto, so a nowrap child (the Homebrew
+     command) would otherwise widen this column past a narrow viewport. */
+  min-width: 0;
+}
 .hero-ar {
   margin: 18px 0 0;
   font-size: clamp(1.05rem, 1.8vw, 1.3rem);
@@ -1343,7 +1348,8 @@ details[open] .faq-body {
 
 /* ---------- Homebrew one-liner ---------- */
 .brew {
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   align-items: center;
   gap: 10px;
   margin: 20px 0 0;
@@ -1352,8 +1358,12 @@ details[open] .faq-body {
   border-radius: 12px;
   background: var(--card);
   max-width: 100%;
+  box-sizing: border-box;
 }
 .brew code {
+  /* min-width:0 lets the command scroll instead of forcing the pill wider
+     than a narrow viewport. */
+  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 0.84rem;
   letter-spacing: -0.01em;
@@ -1383,7 +1393,7 @@ details[open] .faq-body {
   border-color: var(--ink-35);
 }
 .brew-copy.copied {
-  color: var(--accent-deep, inherit);
+  color: var(--teal);
   border-color: currentColor;
 }
 .cta-center .brew {
