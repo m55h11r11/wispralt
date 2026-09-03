@@ -12,7 +12,7 @@ use serde_json::json;
 
 const TRANSCRIBE_URL: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_CHAT_MODEL: &str = "llama-3.1-8b-instant";
+const DEFAULT_CHAT_MODEL: &str = "qwen/qwen3.8-27b";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Groq's transcription endpoint rejects files over 25 MB.
 const GROQ_MAX_BYTES: usize = 25 * 1024 * 1024;

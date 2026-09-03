@@ -22,3 +22,8 @@ signing/
 
 # Local checkout of the Homebrew tap (its own git repo)
 homebrew-lirrly/
+
+# Stray dumps from browser-automation tools (can contain credentials)
+groq-key.txt
+review-key.json
+.playwright-mcp/

@@ -6,6 +6,7 @@ import {
   isRtlText,
   loadHistory,
   loadSettings,
+  RETIRED_CHAT_MODELS,
   localDateKey,
   pushHistory,
   resolveActiveTransform,
@@ -128,5 +129,25 @@ describe("history lifetime count", () => {
 
     await expect(getLifetimeCount()).resolves.toBe(3);
     await expect(pushHistory("four")).resolves.toBe(4);
+  });
+});
+
+describe("retired chat model migration", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("migrates a settings file pointing at a model Groq removed", () => {
+    // Groq deleted llama-3.1-8b-instant; without this migration every existing
+    // install keeps sending it and cleanup/transforms fail with a 404.
+    saveSettings({ ...DEFAULTS, cleanupModel: "llama-3.1-8b-instant" });
+    expect(loadSettings().cleanupModel).toBe(DEFAULTS.cleanupModel);
+  });
+
+  it("leaves a model the user deliberately chose alone", () => {
+    saveSettings({ ...DEFAULTS, cleanupModel: "openai/gpt-oss-120b" });
+    expect(loadSettings().cleanupModel).toBe("openai/gpt-oss-120b");
+  });
+
+  it("ships a default that is not itself retired", () => {
+    expect(RETIRED_CHAT_MODELS).not.toContain(DEFAULTS.cleanupModel);
   });
 });

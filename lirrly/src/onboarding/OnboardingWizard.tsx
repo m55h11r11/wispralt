@@ -191,7 +191,7 @@ function EngineSetup({ onNext }: { onNext: () => void }) {
       // Cheapest real round-trip: a tiny cleanup call proves the key works.
       await invoke<string>("cleanup_text", {
         text: "ping",
-        model: "llama-3.1-8b-instant",
+        model: "qwen/qwen3.8-27b",
         level: "none",
         language: null,
         context: "onboarding",

@@ -41,7 +41,7 @@ async function polishTranscript(
   try {
     const ai = await invoke<string>("cleanup_text", {
       text: deterministic,
-      model: s.cleanupModel || "llama-3.1-8b-instant",
+      model: s.cleanupModel || "qwen/qwen3.8-27b",
       level,
       language: s.language === "auto" ? null : s.language,
       context: ctx,
@@ -61,7 +61,7 @@ export async function transformText(text: string, transform: Transform, s: AppSe
   const out = await invoke<string>("transform_text", {
     text,
     prompt: transform.prompt,
-    model: s.cleanupModel || "llama-3.1-8b-instant",
+    model: s.cleanupModel || "qwen/qwen3.8-27b",
     language: s.language === "auto" ? null : s.language,
   });
   return out.trim();

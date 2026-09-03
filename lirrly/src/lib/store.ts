@@ -86,12 +86,19 @@ const BUILTIN_TRANSFORMS: Transform[] = [
   { id: "translate", name: "Translate", prompt: "Translate to another language", builtIn: true },
 ];
 
+/** Chat models Groq has retired — settings pointing at one are migrated on load. */
+export const RETIRED_CHAT_MODELS = [
+  "llama-3.1-8b-instant",
+  "llama-3.3-70b-versatile",
+  "gemma2-9b-it",
+];
+
 export const DEFAULTS: AppSettings = {
   provider: "groq",
   groqApiKey: "",
   model: "whisper-large-v3-turbo",
   cleanupAiEnabled: true,
-  cleanupModel: "llama-3.1-8b-instant",
+  cleanupModel: "qwen/qwen3.8-27b",
   language: "auto",
   cleanupByCtx: { personal: "light", work: "medium", email: "medium", other: "light" },
   dictionary: [],
@@ -196,7 +203,13 @@ function sanitizeSettings(stored: Record<string, unknown>): Partial<AppSettings>
   if (typeof stored.groqApiKey === "string") next.groqApiKey = stored.groqApiKey;
   if (typeof stored.model === "string") next.model = stored.model;
   if (typeof stored.cleanupAiEnabled === "boolean") next.cleanupAiEnabled = stored.cleanupAiEnabled;
-  if (typeof stored.cleanupModel === "string") next.cleanupModel = stored.cleanupModel;
+  if (typeof stored.cleanupModel === "string") {
+    // Groq retires models; a setting pointing at a dead one would break cleanup
+    // and transforms for existing users, so migrate it to the current default.
+    next.cleanupModel = RETIRED_CHAT_MODELS.includes(stored.cleanupModel)
+      ? DEFAULTS.cleanupModel
+      : stored.cleanupModel;
+  }
   if (typeof stored.language === "string") next.language = stored.language;
   if (Array.isArray(stored.dictionary)) next.dictionary = stored.dictionary.filter(isDictionaryWord);
   if (Array.isArray(stored.snippets)) next.snippets = stored.snippets.filter(isSnippet);

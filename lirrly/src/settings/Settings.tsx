@@ -1014,9 +1014,10 @@ const STYLE_LEVELS: { id: CleanupLevel; name: string; desc: string }[] = [
   { id: "high", name: "High", desc: "Full rewrite for clarity (keeps your voice)." },
 ];
 const CHAT_MODELS = [
-  { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant" },
-  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile" },
-  { id: "gemma2-9b-it", label: "Gemma 2 9B" },
+  { id: "qwen/qwen3.8-27b", label: "Qwen3.8 27B (fastest)" },
+  { id: "openai/gpt-oss-20b", label: "GPT-OSS 20B" },
+  { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B (most capable)" },
+  { id: "allam-2-7b", label: "ALLaM 2 7B (Arabic-first)" },
 ];
 function Styles({ s, update }: { s: AppSettings; update: Update }) {
   const [ctx, setCtx] = useState<CtxKey>("personal");

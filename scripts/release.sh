@@ -20,7 +20,8 @@ NOTES=""
 [ $# -ge 1 ] && shift
 while [ $# -gt 0 ]; do
   case "$1" in
-    --notes) NOTES="$2"; shift 2 ;;
+    # Resolve now: later steps run from other directories.
+    --notes) NOTES="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
