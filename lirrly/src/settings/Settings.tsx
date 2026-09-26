@@ -9,6 +9,7 @@ import {
   DEFAULTS,
   hasTauriRuntime,
   loadSettings,
+  purgeStoredApiKey,
   resolveActiveTransform,
   saveSettings,
   loadHistory,
@@ -175,6 +176,9 @@ export default function Settings() {
         const exists = await invoke<boolean>("has_api_key");
         if (!exists) await invoke("set_api_key", { key: legacy });
         update({ groqApiKey: "" });
+        // The key is in the Keychain now — erase every localStorage copy,
+        // including the pre-rebrand namespace that blanking here never touched.
+        purgeStoredApiKey();
       } catch {
         /* keychain unavailable — keep localStorage copy and retry next launch */
       }

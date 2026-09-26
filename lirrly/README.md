@@ -18,7 +18,7 @@ Inspired by Wispr Flow; built independently with Tauri. Not affiliated with Wisp
 ## Why Lirrly
 
 - **One shortcut anywhere** — `⌘⇧D` records, transcribes, polishes, and pastes where your cursor is.
-- **Privacy by architecture** — API key in the macOS Keychain, history in a local file, strict CSP, no analytics, no account. Audio goes only to the transcription API you configured.
+- **Privacy by architecture** — API key in the macOS Keychain, history in a local file, strict CSP, no account. Audio, and the text the provider returns, go only to the transcription API you configured, under your own key. Crash reporting is opt-in and off by default, and reports are reduced to an error code before they leave.
 - **Arabic-first** — dialect-preserving cleanup (no forced MSA), RTL history, and model guidance for Arabic accuracy. Wispr's weakest area is Lirrly's home turf.
 - **Honest UI** — every control either works or says "Coming soon". No theater.
 

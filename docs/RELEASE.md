@@ -25,16 +25,27 @@ One-time prerequisites — **DONE 2026-09-01** (kept for disaster recovery):
 **The whole release is one command:**
 
 ```bash
-./scripts/release.sh 0.4.1 --notes signing/release-notes-0.4.1.md
+# 1. build, sign, notarize, commit, tag — stops at the provenance gate
+./scripts/release.sh 0.4.2 --notes signing/release-notes-0.4.2.md
+# 2. push the clean public cut for 0.4.2 to main (MASTER-HANDOFF.md)
+# 3. publish, reusing the artifacts from step 1 — no rebuild
+./scripts/release.sh 0.4.2 --notes signing/release-notes-0.4.2.md --publish-only
 ```
 
-It refuses to run on a dirty tree, then bumps all three version files, runs every gate,
-builds signed + notarized, verifies Gatekeeper trust, generates `latest.json` for the
-auto-updater, commits + tags, publishes the GitHub release with all four assets, and
-bumps the Homebrew cask in `homebrew-lirrly/` before pushing the tap.
+It refuses to run on a dirty tree, then bumps every version-bearing file (including
+`package-lock.json`) and asserts they all agree, runs every gate — frontend, full Rust,
+**the shared core crate**, and the architecture/IPC contract check — builds signed +
+notarized, verifies Gatekeeper trust, generates `latest.json` for the auto-updater,
+commits + tags, publishes the GitHub release with all four assets, and bumps the
+Homebrew cask in `homebrew-lirrly/` before pushing the tap.
 
-Afterwards, push the clean public cut to `main` (private dev docs excluded) — see
-"Public pushes" in `MASTER-HANDOFF.md`.
+> **Push the clean public cut to `main` before the script publishes, not after.**
+> The script now refuses to publish unless `origin/main` already declares the version
+> being released, and it targets that exact commit rather than whatever `main` happens
+> to be. This is what went wrong with v0.4.1: it was published with `--target main`
+> before the public cut, so the public `v0.4.1` tag points at source still declaring
+> 0.4.0. If the script stops at this gate, push the public cut and re-run — the signed
+> artifacts are already built and are reused. See "Public pushes" in `MASTER-HANDOFF.md`.
 
 ### Updater signing (separate from Apple signing)
 

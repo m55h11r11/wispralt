@@ -37,7 +37,7 @@
     <section class="section">
       <div class="shell legal">
         <h1 class="display-2">Privacy Policy</h1>
-        <p class="body-m">Last updated 2 September 2026. This policy covers the Lirrly macOS app and lirrly.com.</p>
+        <p class="body-m">Last updated 26 September 2026. This policy covers the Lirrly macOS app and lirrly.com.</p>
 
         <h2>The short version</h2>
         <p>Lirrly has no account system, no tracking, and no Lirrly-operated server in the dictation path. Your dictation history and settings stay on your Mac. Your API key stays in the macOS Keychain. We cannot read any of it.</p>
@@ -45,7 +45,7 @@
         <h2>What stays on your device</h2>
         <ul>
           <li><strong>Your API key</strong> — stored in the macOS Keychain. It is sent only to the transcription provider you configured (Groq), never to us.</li>
-          <li><strong>Dictation history</strong> — a local file on your Mac. You can search, export, or delete it at any time, or turn history off entirely in Settings.</li>
+          <li><strong>Dictation history</strong> — a local file on your Mac. You can search it, copy from it, or delete it at any time, or turn history off entirely in Settings. It keeps the most recent 200 dictations.</li>
           <li><strong>Settings, dictionary, snippets and transforms</strong> — local files. Nothing is synced.</li>
         </ul>
 
@@ -53,7 +53,8 @@
         <p>When you dictate, your audio is sent directly from your Mac to <a href="https://groq.com/privacy-policy/" rel="noopener">Groq</a> for transcription, and the resulting text is sent to Groq for cleanup. This happens with the API key you supplied, under Groq's privacy policy. Lirrly does not proxy, copy, or retain this traffic.</p>
 
         <h2>Optional crash reports and feedback</h2>
-        <p><strong>Off by default.</strong> If you turn on “Send anonymous crash reports” in Settings, Lirrly sends an anonymous install identifier, the app and macOS version, and error details to a server operated by Lirrly's developer. It never sends transcripts, audio, clipboard contents, or your API key. Feedback you type into the in-app form is sent only when you press Send, along with the optional email address you provide. You can turn this off at any time; nothing is sent while it is off.</p>
+        <p><strong>Off by default.</strong> If you turn on crash reports in Settings → Account, Lirrly sends a random install identifier, the app and macOS version, and error details to a server operated by Lirrly's developer. Error details are reduced before they are sent: a provider failure is cut down to its status and error code, and anything shaped like an API key or an email address is stripped out — and the server strips the same shapes again before storing anything. It never sends audio, your history, your clipboard, or your API key. Feedback you type into the in-app form is sent only when you press Send, along with the optional email address you provide. You can turn this off at any time; nothing is sent while it is off.</p>
+        <p>These reports are <strong>pseudonymous, not anonymous</strong>: the install identifier links your reports to each other, and to feedback you choose to send. That link is what makes deletion possible. The server never stores IP addresses, and keeps error reports for <strong>180 days</strong> and feedback for <strong>365 days</strong>, after which they are deleted automatically; backups of this data age out within a further 14 days.</p>
 
         <h2>The website</h2>
         <p>lirrly.com is a static site hosted on GitHub Pages. It sets no cookies and runs no analytics. GitHub may log requests as part of serving the site — see <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>.</p>
@@ -62,13 +63,13 @@
         <p>Lirrly is not directed at children under 13 and does not knowingly collect personal information from them.</p>
 
         <h2>Your rights</h2>
-        <p>Because Lirrly holds no account and stores your content locally, you can exercise deletion yourself: clear history in Settings, remove the Keychain entry, and delete the app. For anything sent via optional crash reports or feedback, email the address below and it will be deleted on request.</p>
+        <p>Because Lirrly holds no account and stores your content locally, you can exercise deletion yourself: clear history in Settings, remove the Keychain entry, and delete the app. For anything sent via optional crash reports or feedback, ask for deletion through the in-app feedback form (Settings → Account). The form carries this install's identifier, which is what lets the matching reports and feedback be found and deleted — so please don't post that identifier in a public GitHub issue.</p>
 
         <h2>Changes</h2>
         <p>Material changes to this policy will be noted here with a new “last updated” date, and in the release notes of the version that changes behaviour.</p>
 
         <h2>Contact</h2>
-        <p>Questions or deletion requests: <a href="https://github.com/m55h11r11/wispralt/issues" rel="noopener">open an issue on GitHub</a>, or use the in-app feedback form in Settings → Account.</p>
+        <p>Deletion requests: the in-app feedback form in Settings → Account, which reaches the developer privately. General questions: <a href="https://github.com/m55h11r11/wispralt/issues" rel="noopener">open an issue on GitHub</a> — issues are public.</p>
       </div>
     </section>
   </main>

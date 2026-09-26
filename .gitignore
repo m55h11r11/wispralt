@@ -2,6 +2,7 @@
 .tmp/
 .playwright-mcp/
 .DS_Store
+__pycache__/
 
 # Local generated review/verification output
 archive-output/
@@ -15,10 +16,10 @@ design/reference/
 # Agent continuity + QA docs are workspace-local, not part of the public product.
 CLAUDE.md
 MASTER-HANDOFF.md
-ARCHITECTURE.md
 handoffs/
 site-qa-output/
 signing/
+FULL-AUDIT-*.md
 
 # Local checkout of the Homebrew tap (its own git repo)
 homebrew-lirrly/

@@ -113,8 +113,8 @@ function Permissions({ onNext }: { onNext: () => void }) {
     <div className="ob-step">
       <h1 className="ob-heading">Two quick permissions</h1>
       <p className="ob-sub">
-        Lirrly needs these to hear you and to paste the result. Nothing leaves this Mac except
-        the audio sent for transcription.
+        Lirrly needs these to hear you and to paste the result. Your audio — and the text that
+        comes back — go to the Groq account whose key you provide. Nothing else leaves this Mac.
       </p>
       <div className="card">
         <div className="row">
@@ -210,7 +210,8 @@ function EngineSetup({ onNext }: { onNext: () => void }) {
       <h1 className="ob-heading">Connect your engine</h1>
       <p className="ob-sub">
         Lirrly transcribes with Groq's Whisper API — fast, accurate, and free for personal use.
-        Your key is stored in the macOS Keychain and never leaves this Mac.
+        Your key is kept in the macOS Keychain and sent only to Groq, to authorise your own
+        requests.
       </p>
       <div className="card">
         <div className="row">

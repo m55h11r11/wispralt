@@ -9,13 +9,17 @@ import type { AppSettings, CleanupLevel, CtxKey, Snippet, Transform } from "./st
  */
 export async function transcribe(blob: Blob, s: AppSettings, ctx: CtxKey = "personal"): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  const audio_b64 = base64FromBytes(bytes);
+  const audioB64 = base64FromBytes(bytes);
   // Personal-dictionary terms become a recognition hint (Whisper `prompt`).
   const hint = s.dictionary?.length
     ? s.dictionary.map((d) => d.word).slice(0, 60).join(", ")
     : null;
   const raw = await invoke<string>("transcribe", {
-    audio_b64,
+    // `audioB64`, not `audio_b64`: `#[tauri::command]` defaults to
+    // rename_all = "camelCase", so Rust's `audio_b64` parameter is read from
+    // this exact key. A mismatch fails the whole call with
+    // "missing required key audioB64" before the Keychain is ever touched.
+    audioB64,
     mime: blob.type || "audio/webm",
     model: s.model,
     language: s.language === "auto" ? null : s.language,
@@ -32,7 +36,7 @@ async function polishTranscript(
   s: AppSettings,
   ctx: CtxKey
 ): Promise<string> {
-  const deterministic = applyCleanup(raw, level);
+  const deterministic = applyCleanup(raw, level, s.language === "auto" ? null : s.language);
   if (level === "none" || level === "light" || !s.cleanupAiEnabled) {
     return deterministic;
   }
@@ -67,33 +71,53 @@ export async function transformText(text: string, transform: Transform, s: AppSe
   return out.trim();
 }
 
+/** Stray separators the filler pass can strand at the front of a sentence.
+ *  Deliberately NOT a "everything that isn't a letter" class: a leading minus
+ *  sign, quote, bracket, currency symbol or emoji is content, not noise. */
+const LEADING_SEPARATORS = /^[\s,.;:!?…،؛۔]+/u;
+
+/** Fillers are English tokens. `um` is also an ordinary German word, `hmm`
+ *  appears in several languages — so only strip them when the transcript is
+ *  English or the language is unknown (auto-detect). */
+const ENGLISH_FILLERS = /\b(um+|uh+|erm+|uhm+|hmm+)\b[,.]?/gi;
+
 /**
  * Lightweight, deterministic cleanup — placeholder for the eventual local-LLM
  * layer. Only strips unambiguous fillers so it can't corrupt meaning.
+ * `lang` is the configured transcription language, or null for auto-detect.
  */
-export function applyCleanup(text: string, level: CleanupLevel): string {
+export function applyCleanup(text: string, level: CleanupLevel, lang: string | null = null): string {
   let t = text.trim();
   if (level === "none") return t;
-  t = t.replace(/\b(um+|uh+|erm+|uhm+|hmm+)\b[,.]?/gi, "");
+  if (lang === null || lang.startsWith("en")) t = t.replace(ENGLISH_FILLERS, "");
   t = t.replace(/\s{2,}/g, " ").replace(/\s+([,.!?;:])/g, "$1").trim();
-  // Strip any leading punctuation left behind after filler removal.
-  t = t.replace(/^[^\wÀ-ɏ؀-ۿ]+/, "").trim();
-  if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
+  t = t.replace(LEADING_SEPARATORS, "").trim();
+  // Only a lowercase letter can be capitalized. Guarding on it keeps
+  // caseless scripts and leading symbols byte-identical.
+  if (/^\p{Ll}/u.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
   return t;
 }
 
 /** Expand snippet triggers (whole-word, case-insensitive) into their text.
- *  Single pass over the input, so one expansion can never re-trigger another. */
+ *  Single pass over the input, so one expansion can never re-trigger another.
+ *
+ *  Boundaries are Unicode-aware rather than `\b`, which is ASCII-only: with
+ *  `\b` an Arabic trigger could never match (Arabic letters are not ASCII word
+ *  characters, so the required boundary never existed) and neither could a
+ *  trigger ending in punctuation such as `C++`. The preceding character is
+ *  captured and re-emitted instead of using lookbehind, which the WebKit on
+ *  macOS 12 — our stated minimum — does not support. */
 export function applySnippets(text: string, snippets: Snippet[]): string {
   const active = (snippets ?? []).filter((sn) => sn.trigger);
   if (!active.length) return text;
+  const alternation = active.map((sn) => escapeRegex(sn.trigger)).join("|");
   const combined = new RegExp(
-    active.map((sn) => `\\b${escapeRegex(sn.trigger)}\\b`).join("|"),
-    "gi"
+    `(^|[^\\p{L}\\p{N}_])(${alternation})(?![\\p{L}\\p{N}_])`,
+    "giu"
   );
-  return text.replace(combined, (match) => {
-    const sn = active.find((x) => x.trigger.toLowerCase() === match.toLowerCase());
-    return sn?.expansion ?? match;
+  return text.replace(combined, (_match, before: string, trigger: string) => {
+    const sn = active.find((x) => x.trigger.toLowerCase() === trigger.toLowerCase());
+    return before + (sn?.expansion ?? trigger);
   });
 }
 

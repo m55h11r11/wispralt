@@ -59,6 +59,25 @@ const PREVIEW_STATES: State[] = ["listening", "processing", "done", "error"];
 const DOCK_HIDE_MS = 170;
 // Auto-stop guard: Groq rejects clips over 25 MB and ramblers forget to stop.
 const MAX_RECORDING_MS = 5 * 60 * 1000;
+
+/** Returned by the native paste when Accessibility is off: the text did reach
+ *  the clipboard, only the synthetic ⌘V was impossible. A completed operation
+ *  needing one keystroke — never treat it as a failure. */
+const COPIED_NOT_PASTED = "accessibility_not_granted_copied";
+
+/** How long each terminal message lingers before the bar tucks itself away. */
+const TOAST_MS = {
+  done: 900,
+  milestone: 1700,
+  error: 2200,
+  /** Long enough for a fix button to actually be clicked. */
+  actionable: 4000,
+  /** The ⌘V hint has to survive looking down at the keyboard. */
+  copied: 6000,
+  /** Retry needs human reaction time, not a glance — and the retained audio is
+   *  dropped when this expires, so this window is the whole recovery chance. */
+  retry: 8000,
+} as const;
 const noopDockHover = (_action: DockAction | null) => {};
 
 function isDockAction(value: string | null): value is DockAction {
@@ -118,6 +137,10 @@ export default function FlowBar() {
   );
   const stateRef = useRef<State>("idle");
   const recRef = useRef<Recorder | null>(null);
+  /** The audio of the take being delivered, held until the words are out of the
+   *  app's hands. A blip, a 429 or a revoked key must cost a click, not the
+   *  thing the user just said. At most one take is ever retained. */
+  const pendingTakeRef = useRef<{ blob: Blob; durationMs: number | undefined } | null>(null);
   const rafRef = useRef<number | null>(null);
   const resetTimerRef = useRef<number | null>(null);
   const collapseTimerRef = useRef<number | null>(null);
@@ -135,6 +158,15 @@ export default function FlowBar() {
     if (!dockOpen && !dockClosing) return "collapsed";
     return "idle";
   }, [activeMenu, dockClosing, dockOpen, state]);
+
+  useEffect(
+    () => () => {
+      // Unmount (window closing, hot reload) must not strand a live microphone.
+      recRef.current?.dispose();
+      recRef.current = null;
+    },
+    []
+  );
 
   useEffect(() => {
     stateRef.current = state;
@@ -228,10 +260,16 @@ export default function FlowBar() {
   }
 
   async function startListening() {
+    // Claim synchronously. `startRecording` awaits getUserMedia, so a guard on
+    // state alone lets two quick shortcut presses both pass — each opening a
+    // microphone, the first left live with nobody holding a reference to it.
     if (busyRef.current || stateRef.current === "listening") return;
+    busyRef.current = true;
     clearResetTimer();
     clearCollapseTimer();
     opIdRef.current += 1;
+    const opId = opIdRef.current;
+    discardPendingTake();
     setActiveMenu(null);
     setHoveredAction(null);
     setDockClosing(false);
@@ -240,7 +278,15 @@ export default function FlowBar() {
     // Even with the bar configured hidden, recording must always be visible.
     if (hasTauriRuntime()) void invoke("show_flowbar").catch(() => {});
     try {
-      recRef.current = await startRecording(loadSettings().selectedMicId || undefined);
+      const recorder = await startRecording(loadSettings().selectedMicId || undefined);
+      // A newer operation or a reset happened while permission was pending, so
+      // this microphone has no owner — close it rather than stranding it.
+      if (opId !== opIdRef.current) {
+        recorder.dispose();
+        return;
+      }
+      recRef.current?.dispose();
+      recRef.current = recorder;
       listenStartRef.current = Date.now();
       setState("listening");
       startMeter();
@@ -260,7 +306,16 @@ export default function FlowBar() {
       } else {
         fail("Microphone unavailable");
       }
+    } finally {
+      busyRef.current = false;
     }
+  }
+
+  /** Drop the retained audio. Called when a new take starts, when the words are
+   *  delivered, and when the recovery window closes — so nothing is held that
+   *  the user has no way to reach. */
+  function discardPendingTake() {
+    pendingTakeRef.current = null;
   }
 
   async function stopAndTranscribe() {
@@ -277,33 +332,98 @@ export default function FlowBar() {
       if (!rec) return resetIfCurrent(opId);
       const blob = await rec.stop();
       recRef.current = null;
-
-      // The API key lives in the Keychain — a missing key surfaces as a Rust error.
-      const settings = loadSettings();
-      const text = await transcribe(blob, settings);
-      if (!text) {
-        fail("Nothing heard — try again");
-        return;
-      }
-      let count = 0;
-      if (settings.storeHistory) count = await pushHistory(text, durationMs);
-      await invoke("paste_text", { text });
-      if (hasTauriRuntime()) void emit("dictation-complete", null);
-      // Dictation-count milestones create frequent, visible progress wins; word
-      // totals remain in Insights, but celebrations use the lifetime session count.
-      const milestone =
-        settings.notifications.milestones && [10, 50, 100, 500, 1000].includes(count);
-      setState("done");
-      setMessage(milestone ? `🎉 ${count} dictations!` : "Done");
-      scheduleReset(milestone ? 1700 : 900, opId);
+      pendingTakeRef.current = { blob, durationMs };
+      await deliverTake(blob, durationMs, opId);
     } catch (e) {
-      if (String(e).includes("paste_busy")) {
-        setState("done");
-        setMessage("Paste already in progress");
-        scheduleReset(900, opId);
-        return;
+      failAfterCapture(e);
+    } finally {
+      busyRef.current = false;
+    }
+  }
+
+  /** Everything after the audio exists: transcribe, store, deliver. Shared by
+   *  the first attempt and by Retry so the two cannot drift apart. Throws on
+   *  failure; both callers route it through `failAfterCapture`. */
+  async function deliverTake(blob: Blob, durationMs: number | undefined, opId: number) {
+    // The API key lives in the Keychain — a missing key surfaces as a Rust error.
+    const settings = loadSettings();
+    const text = await transcribe(blob, settings);
+    if (!text) {
+      discardPendingTake();
+      fail("Nothing heard — try again");
+      return;
+    }
+    let count = 0;
+    if (settings.storeHistory) {
+      try {
+        count = await pushHistory(text, durationMs);
+      } catch (e) {
+        // Storage is not the point of a dictation. Report it, but never let a
+        // failed history write stop the words from reaching the cursor.
+        reportError("history_write_failed", String(e));
       }
-      failFromError(e);
+    }
+    let copiedOnly = false;
+    try {
+      await invoke("paste_text", { text });
+    } catch (e) {
+      // Accessibility is off, but the transcript is on the clipboard: a
+      // completed dictation needing one extra keystroke, not a failure.
+      if (!String(e).includes(COPIED_NOT_PASTED)) throw e;
+      copiedOnly = true;
+    }
+    // The words are out of the app's hands — there is nothing left to retry.
+    discardPendingTake();
+    if (hasTauriRuntime()) void emit("dictation-complete", null);
+    setState("done");
+    if (copiedOnly) {
+      setMessage("Copied — press ⌘V to paste");
+      setToastAction({
+        label: "Enable pasting",
+        run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
+      });
+      scheduleReset(TOAST_MS.copied, opId);
+      return;
+    }
+    // Dictation-count milestones create frequent, visible progress wins; word
+    // totals remain in Insights, but celebrations use the lifetime session count.
+    const milestone =
+      settings.notifications.milestones && [10, 50, 100, 500, 1000].includes(count);
+    setMessage(milestone ? `🎉 ${count} dictations!` : "Done");
+    scheduleReset(milestone ? TOAST_MS.milestone : TOAST_MS.done, opId);
+  }
+
+  /** Failure handling for a take whose audio was captured: offers Retry when a
+   *  retry could actually succeed. */
+  function failAfterCapture(e: unknown) {
+    if (String(e).includes("paste_busy")) {
+      setState("done");
+      setMessage("Paste already in progress");
+      scheduleReset(TOAST_MS.done, opIdRef.current);
+      return;
+    }
+    failFromError(e, "Transcription failed", {
+      label: "Retry",
+      run: () => void retryPendingTake(),
+    });
+  }
+
+  /** Re-deliver the retained take. Same pipeline as the first attempt. */
+  async function retryPendingTake() {
+    const take = pendingTakeRef.current;
+    if (!take || busyRef.current) return;
+    busyRef.current = true;
+    clearResetTimer();
+    opIdRef.current += 1;
+    const opId = opIdRef.current;
+    setToastAction(null);
+    setDockOpen(true);
+    setState("processing");
+    setMessage("Retrying…");
+    try {
+      await deliverTake(take.blob, take.durationMs, opId);
+    } catch (e) {
+      failAfterCapture(e);
     } finally {
       busyRef.current = false;
     }
@@ -335,10 +455,25 @@ export default function FlowBar() {
         fail("Transform came back empty — try again");
         return;
       }
-      await invoke("paste_text", { text: out });
+      let copiedOnly = false;
+      try {
+        await invoke("paste_text", { text: out });
+      } catch (e) {
+        if (!String(e).includes(COPIED_NOT_PASTED)) throw e;
+        copiedOnly = true;
+      }
       setState("done");
+      if (copiedOnly) {
+        setMessage(`${transform.name} — copied, press ⌘V`);
+        setToastAction({
+          label: "Enable pasting",
+          run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
+        });
+        scheduleReset(TOAST_MS.copied, opId);
+        return;
+      }
       setMessage(`${transform.name} ✓`);
-      scheduleReset(900, opId);
+      scheduleReset(TOAST_MS.done, opId);
     } catch (e) {
       const msg = String(e);
       if (msg.includes("no_selection")) {
@@ -348,7 +483,7 @@ export default function FlowBar() {
       } else if (msg.includes("paste_busy")) {
         setState("done");
         setMessage("Another paste is in progress");
-        scheduleReset(900, opId);
+        scheduleReset(TOAST_MS.done, opId);
       } else {
         failFromError(e, "Transform failed");
       }
@@ -357,8 +492,11 @@ export default function FlowBar() {
     }
   }
 
-  /** Map raw engine/Rust errors to actionable, human toasts. */
-  function failFromError(e: unknown, fallbackMsg = "Transcription failed") {
+  /** Map raw engine/Rust errors to actionable, human toasts.
+   *  `retry` is offered only where retrying the same audio could succeed; where
+   *  it could not, any retained take is dropped rather than implying a recovery
+   *  path the UI does not provide. */
+  function failFromError(e: unknown, fallbackMsg = "Transcription failed", retry?: ToastAction) {
     const msg = String(e);
     // Opt-in only (gated inside reportError on `shareAnalytics`); never blocks the UI.
     reportError(fallbackMsg.toLowerCase().replace(/\s+/g, "_"), msg);
@@ -366,23 +504,27 @@ export default function FlowBar() {
       label: "Open Settings",
       run: () => openSettingsSection("settings"),
     };
+    const giveUp = (message: string, action?: ToastAction) => {
+      discardPendingTake();
+      fail(message, action);
+    };
     if (msg.includes("missing_api_key")) {
-      fail("No API key — add one in Settings", openSettings);
+      giveUp("No API key — add one in Settings", openSettings);
     } else if (msg.includes("401") || msg.includes("invalid_api_key")) {
-      fail("API key invalid — check it in Settings", openSettings);
-    } else if (msg.includes("429")) {
-      fail("Groq rate limit — wait a moment");
+      giveUp("API key invalid — check it in Settings", openSettings);
     } else if (msg.includes("recording_too_large")) {
-      fail("Recording too long — try shorter takes");
-    } else if (msg.includes("accessibility_not_granted")) {
-      fail("Accessibility needed to paste", {
+      giveUp("Recording too long — try shorter takes");
+    } else if (msg.includes("accessibility_not_granted") && !msg.includes(COPIED_NOT_PASTED)) {
+      giveUp("Accessibility needed to paste", {
         label: "Fix in System Settings",
         run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
       });
+    } else if (msg.includes("429")) {
+      fail("Groq rate limit — wait a moment", retry, retry && TOAST_MS.retry);
     } else if (/timed? ?out|connection|network|error sending request|dns/i.test(msg)) {
-      fail("Can't reach Groq — check your connection");
+      fail("Can't reach Groq — check your connection", retry, retry && TOAST_MS.retry);
     } else {
-      fail(fallbackMsg);
+      fail(fallbackMsg, retry, retry && TOAST_MS.retry);
     }
   }
 
@@ -462,7 +604,7 @@ export default function FlowBar() {
     rafRef.current = null;
   }
 
-  function fail(msg: string, action?: ToastAction) {
+  function fail(msg: string, action?: ToastAction, lingerMs?: number) {
     const opId = opIdRef.current;
     stopMeter();
     clearRecordingCap();
@@ -474,7 +616,7 @@ export default function FlowBar() {
     setToastAction(action ?? null);
     notifyError(msg);
     // Errors with a fix button linger longer so it can actually be clicked.
-    scheduleReset(action ? 4000 : 2200, opId);
+    scheduleReset(lingerMs ?? (action ? TOAST_MS.actionable : TOAST_MS.error), opId);
   }
 
   function reset() {
@@ -490,6 +632,8 @@ export default function FlowBar() {
     }
     clearResetTimer();
     clearRecordingCap();
+    // The toast carrying Retry is gone, so the retained audio is unreachable.
+    discardPendingTake();
     setState("idle");
     setMessage("");
     setToastAction(null);

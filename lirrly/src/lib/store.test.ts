@@ -4,6 +4,7 @@ import {
   DEFAULTS,
   getLifetimeCount,
   isRtlText,
+  purgeStoredApiKey,
   loadHistory,
   loadSettings,
   RETIRED_CHAT_MODELS,
@@ -149,5 +150,35 @@ describe("retired chat model migration", () => {
 
   it("ships a default that is not itself retired", () => {
     expect(RETIRED_CHAT_MODELS).not.toContain(DEFAULTS.cleanupModel);
+  });
+});
+
+describe("purgeStoredApiKey", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("erases the key from the pre-rebrand namespace the migration never touched", () => {
+    localStorage.setItem("murmur.settings", JSON.stringify({ groqApiKey: "gsk_legacy", language: "ar" }));
+    localStorage.setItem("lirrly.settings", JSON.stringify({ groqApiKey: "gsk_current", language: "ar" }));
+    purgeStoredApiKey();
+    for (const namespace of ["murmur.settings", "lirrly.settings"]) {
+      const parsed = JSON.parse(localStorage.getItem(namespace) as string) as Record<string, unknown>;
+      expect(parsed).not.toHaveProperty("groqApiKey");
+      // Everything else the user configured must survive the purge.
+      expect(parsed.language).toBe("ar");
+    }
+  });
+
+  it("is a no-op when no key was ever stored", () => {
+    localStorage.setItem("lirrly.settings", JSON.stringify({ language: "en" }));
+    purgeStoredApiKey();
+    expect(localStorage.getItem("lirrly.settings")).toBe(JSON.stringify({ language: "en" }));
+  });
+
+  it("drops an unparseable blob rather than leaving a credential inside it", () => {
+    // loadSettings already discards this and falls back to defaults, so it holds
+    // no live configuration — only, possibly, a key.
+    localStorage.setItem("murmur.settings", '{"groqApiKey":"gsk_broken"');
+    purgeStoredApiKey();
+    expect(localStorage.getItem("murmur.settings")).toBeNull();
   });
 });

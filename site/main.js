@@ -5,6 +5,12 @@
   "use strict";
 
   const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* Opt into the scroll-reveal animation only now that this script is running.
+     Until this line the content is plain and visible, so a blocked or broken
+     main.js degrades to a static page rather than an empty one. Reduced motion
+     skips the opt-in entirely — there is nothing to animate. */
+  if (!RM) document.documentElement.classList.add("js-reveal");
   const FINE = matchMedia("(pointer: fine)").matches;
   const $ = (s, r = document) => r.querySelector(s);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

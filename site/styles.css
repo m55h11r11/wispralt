@@ -237,8 +237,13 @@ summary {
   font-family: var(--arabic);
 }
 
-/* ---------- Reveal ---------- */
-[data-reveal] {
+/* ---------- Reveal ----------
+   Content is visible by default and only hides itself once main.js has
+   confirmed it is running and able to reveal it again. Hiding first and
+   revealing later meant that if JavaScript was disabled, blocked, or threw
+   before the observer was attached, the page rendered with every heading at
+   opacity 0 — a blank site. */
+.js-reveal [data-reveal] {
   opacity: 0;
   transform: translateY(22px);
   transition:
@@ -246,7 +251,7 @@ summary {
     transform 0.9s var(--ease);
   transition-delay: var(--d, 0ms);
 }
-[data-reveal].is-in {
+.js-reveal [data-reveal].is-in {
   opacity: 1;
   transform: none;
 }

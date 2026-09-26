@@ -357,11 +357,14 @@ fn update_shortcut(app: AppHandle, action: String, accelerator: String) -> Resul
 /// Put text on the clipboard, paste it into the frontmost app (Cmd+V), then
 /// restore the previous clipboard so dictation doesn't clobber a user copy.
 /// Async so the inter-keystroke waits never block the main thread.
+///
+/// Without Accessibility the synthetic ⌘V is impossible, but the transcript is
+/// still written to the clipboard and deliberately *not* restored away, so the
+/// user can paste it by hand — which is exactly what onboarding promises. That
+/// case returns `accessibility_not_granted_copied`: the words are safe, only
+/// the automatic insertion failed. Returning before writing the clipboard, as
+/// this did until 0.4.2, silently destroyed the dictation instead.
 async fn perform_paste(app: &AppHandle, text: String) -> Result<(), String> {
-    if !check_accessibility() {
-        return Err("accessibility_not_granted".into());
-    }
-
     use tauri_plugin_clipboard_manager::ClipboardExt;
     // Non-text clipboard contents (images, files) can't be restored — known v1 limit.
     let previous = app.clipboard().read_text().ok().filter(|t| !t.is_empty());
@@ -369,13 +372,16 @@ async fn perform_paste(app: &AppHandle, text: String) -> Result<(), String> {
         .write_text(text)
         .map_err(|e| e.to_string())?;
 
+    if !check_accessibility() {
+        return Err("accessibility_not_granted_copied".into());
+    }
+
     tokio::time::sleep(Duration::from_millis(120)).await;
 
+    // Permission can be revoked mid-flight. The transcript is already on the
+    // clipboard; keep it there rather than restoring the old contents over it.
     if !check_accessibility() {
-        if let Some(old) = previous.as_ref() {
-            let _ = app.clipboard().write_text(old.clone());
-        }
-        return Err("accessibility_not_granted".into());
+        return Err("accessibility_not_granted_copied".into());
     }
 
     {
@@ -545,12 +551,20 @@ pub fn run() {
 
             // Global hotkeys (dictation toggle + transform). The frontend
             // re-applies the user's saved bindings at startup via `update_shortcut`.
-            register_action_shortcut(app.handle(), "dictation", DEFAULT_DICTATION_ACCELERATOR)?;
-            if let Err(err) =
-                register_action_shortcut(app.handle(), "transform", DEFAULT_TRANSFORM_ACCELERATOR)
-            {
-                // Another app owns ⌥T — dictation still works; users can rebind in Shortcuts.
-                eprintln!("transform shortcut unavailable: {err}");
+            //
+            // A conflict is never fatal. Propagating the error out of `setup`
+            // aborts the whole launch, so an unrelated app holding ⌘⇧D used to
+            // mean Lirrly simply would not open — with no way to reach Settings
+            // and rebind it. Degrade instead: the FlowBar's record button and
+            // the tray still work, and the saved bindings are applied moments
+            // later anyway.
+            for (action, accelerator) in [
+                ("dictation", DEFAULT_DICTATION_ACCELERATOR),
+                ("transform", DEFAULT_TRANSFORM_ACCELERATOR),
+            ] {
+                if let Err(err) = register_action_shortcut(app.handle(), action, accelerator) {
+                    eprintln!("{action} shortcut unavailable ({accelerator}): {err}");
+                }
             }
 
             // Menu-bar tray, ordered for the compact Lirrly workflow.

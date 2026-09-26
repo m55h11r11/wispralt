@@ -256,6 +256,28 @@ export function saveSettings(s: AppSettings): void {
   localStorage.setItem(SKEY, JSON.stringify(s));
 }
 
+/** Remove the API key from every settings namespace this app has ever written.
+ *  Blanking it in the current namespace alone left the pre-rebrand
+ *  `murmur.settings` copy holding a readable credential forever, on exactly the
+ *  machines that upgraded. Call only once the key is confirmed in the Keychain. */
+export function purgeStoredApiKey(): void {
+  for (const namespace of [SKEY, LEGACY_SKEY]) {
+    const raw = localStorage.getItem(namespace);
+    if (raw === null) continue;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!("groqApiKey" in parsed)) continue;
+      delete parsed.groqApiKey;
+      localStorage.setItem(namespace, JSON.stringify(parsed));
+    } catch {
+      // Unparseable: `loadSettings` already discards this blob and falls back to
+      // defaults, so it holds no live configuration — only, possibly, a key.
+      // Dropping it removes the credential and changes nothing the user sees.
+      localStorage.removeItem(namespace);
+    }
+  }
+}
+
 /** A random, anonymous per-install id — used only to group opt-in crash reports
  *  (never tied to identity). Generated once and kept in localStorage. */
 export function getInstallId(): string {
