@@ -437,6 +437,7 @@ dependencies = [
  "keyring",
  "reqwest",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

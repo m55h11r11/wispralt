@@ -8,8 +8,9 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { startRecording, type Recorder } from "../lib/audio";
-import { transcribe, transformText } from "../lib/engine";
+import { resolveCtx, transcribe, transformText } from "../lib/engine";
 import { reportError } from "../lib/telemetry";
+import { pendingRestartVersion, restartApp } from "../lib/updater";
 import {
   hasTauriRuntime,
   loadSettings,
@@ -64,6 +65,28 @@ const MAX_RECORDING_MS = 5 * 60 * 1000;
  *  the clipboard, only the synthetic ⌘V was impossible. A completed operation
  *  needing one keystroke — never treat it as a failure. */
 const COPIED_NOT_PASTED = "accessibility_not_granted_copied";
+
+/** Returned by the native paste when a different app came to the front while
+ *  the result was being prepared. Also completed: the text is on the clipboard,
+ *  deliberately not typed into whatever window happens to be in front now. */
+const COPIED_TARGET_CHANGED = "target_changed_copied";
+
+type CopiedReason = "accessibility" | "target_changed";
+
+/** Which "copied instead of pasted" outcome a paste error is, if any. */
+function copiedReason(e: unknown): CopiedReason | null {
+  const msg = String(e);
+  if (msg.includes(COPIED_NOT_PASTED)) return "accessibility";
+  if (msg.includes(COPIED_TARGET_CHANGED)) return "target_changed";
+  return null;
+}
+
+/** The app in front right now, recorded as where a pending result belongs.
+ *  Null when unknown — the native paste then skips the check. */
+function currentPasteTarget(): Promise<string | null> {
+  if (!hasTauriRuntime()) return Promise.resolve(null);
+  return invoke<string | null>("paste_target").catch(() => null);
+}
 
 /** How long each terminal message lingers before the bar tucks itself away. */
 const TOAST_MS = {
@@ -132,15 +155,20 @@ export default function FlowBar() {
   const [dockClosing, setDockClosing] = useState(false);
   const [opacity, setOpacity] = useState(() => loadSettings().flowBarOpacity);
   const [language, setLanguage] = useState(() => loadSettings().language);
-  const [polishLevel, setPolishLevel] = useState<CleanupLevel>(
-    () => loadSettings().cleanupByCtx.personal
-  );
+  const [polishLevel, setPolishLevel] = useState<CleanupLevel>(() => {
+    const s = loadSettings();
+    return s.cleanupByCtx[s.activeCtx];
+  });
   const stateRef = useRef<State>("idle");
   const recRef = useRef<Recorder | null>(null);
   /** The audio of the take being delivered, held until the words are out of the
    *  app's hands. A blip, a 429 or a revoked key must cost a click, not the
    *  thing the user just said. At most one take is ever retained. */
-  const pendingTakeRef = useRef<{ blob: Blob; durationMs: number | undefined } | null>(null);
+  const pendingTakeRef = useRef<{
+    blob: Blob;
+    durationMs: number | undefined;
+    target: string | null;
+  } | null>(null);
   const rafRef = useRef<number | null>(null);
   const resetTimerRef = useRef<number | null>(null);
   const collapseTimerRef = useRef<number | null>(null);
@@ -177,6 +205,13 @@ export default function FlowBar() {
     if (!hasTauriRuntime()) return;
     void invoke("resize_flowbar", size).catch(() => {});
   }, [viewMode]);
+
+  // Startup reconciliation (audit A21): the window config always creates the
+  // bar visible; a user who chose "only while dictating" gets it hidden here.
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    if (!loadSettings().showFlowBar) void invoke("hide_flowbar").catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -229,7 +264,13 @@ export default function FlowBar() {
       const s = loadSettings();
       setOpacity(s.flowBarOpacity);
       setLanguage(s.language);
-      setPolishLevel(s.cleanupByCtx.personal);
+      setPolishLevel(s.cleanupByCtx[s.activeCtx]);
+      // Visibility follows the preference — but never mid-take: hiding while
+      // recording or processing would make a hot microphone invisible (A21).
+      // reset() re-applies the preference once the take ends.
+      if (!s.showFlowBar && stateRef.current === "idle") {
+        void invoke("hide_flowbar").catch(() => {});
+      }
     })
       .then((f) => {
         if (alive) unlisten = f;
@@ -259,7 +300,25 @@ export default function FlowBar() {
     else if (currentState !== "processing") await startListening();
   }
 
+  /** An installed update replaced this app's bundle on disk, so until the
+   *  restart macOS refuses the microphone and Accessibility to this process
+   *  (audit A36). Say so — with the one-click fix — instead of starting a take
+   *  that would fail with a misleading permissions error. A take already under
+   *  way is never interrupted; only new ones are refused. */
+  function refuseUntilRestart(): boolean {
+    const current = stateRef.current;
+    if (busyRef.current || current === "listening" || current === "processing") return false;
+    if (!pendingRestartVersion()) return false;
+    if (hasTauriRuntime()) void invoke("show_flowbar").catch(() => {});
+    fail("Restart Lirrly to finish the update", {
+      label: "Restart",
+      run: () => void restartApp().catch(() => {}),
+    });
+    return true;
+  }
+
   async function startListening() {
+    if (refuseUntilRestart()) return;
     // Claim synchronously. `startRecording` awaits getUserMedia, so a guard on
     // state alone lets two quick shortcut presses both pass — each opening a
     // microphone, the first left live with nobody holding a reference to it.
@@ -290,6 +349,8 @@ export default function FlowBar() {
       listenStartRef.current = Date.now();
       setState("listening");
       startMeter();
+      // Menu-bar dot: recording stays visible even if every window is hidden.
+      if (hasTauriRuntime()) void invoke("set_tray_recording", { recording: true }).catch(() => {});
       clearRecordingCap();
       recordingCapRef.current = window.setTimeout(() => {
         if (stateRef.current === "listening") void stopAndTranscribe();
@@ -326,14 +387,19 @@ export default function FlowBar() {
     clearRecordingCap();
     stopMeter();
     setState("processing");
+    if (hasTauriRuntime()) void invoke("set_tray_recording", { recording: false }).catch(() => {});
     setMessage("Polishing...");
+    // Recorded the moment the user says "done": that app, not whichever is in
+    // front once transcription finishes, is where the words belong.
+    const targetPromise = currentPasteTarget();
     try {
       const rec = recRef.current;
       if (!rec) return resetIfCurrent(opId);
       const blob = await rec.stop();
       recRef.current = null;
-      pendingTakeRef.current = { blob, durationMs };
-      await deliverTake(blob, durationMs, opId);
+      const target = await targetPromise;
+      pendingTakeRef.current = { blob, durationMs, target };
+      await deliverTake(blob, durationMs, target, opId);
     } catch (e) {
       failAfterCapture(e);
     } finally {
@@ -344,10 +410,15 @@ export default function FlowBar() {
   /** Everything after the audio exists: transcribe, store, deliver. Shared by
    *  the first attempt and by Retry so the two cannot drift apart. Throws on
    *  failure; both callers route it through `failAfterCapture`. */
-  async function deliverTake(blob: Blob, durationMs: number | undefined, opId: number) {
+  async function deliverTake(
+    blob: Blob,
+    durationMs: number | undefined,
+    target: string | null,
+    opId: number
+  ) {
     // The API key lives in the Keychain — a missing key surfaces as a Rust error.
     const settings = loadSettings();
-    const text = await transcribe(blob, settings);
+    const text = await transcribe(blob, settings, resolveCtx(settings.activeCtx, target));
     if (!text) {
       discardPendingTake();
       fail("Nothing heard — try again");
@@ -356,33 +427,28 @@ export default function FlowBar() {
     let count = 0;
     if (settings.storeHistory) {
       try {
-        count = await pushHistory(text, durationMs);
+        count = await pushHistory(text, durationMs, target);
       } catch (e) {
         // Storage is not the point of a dictation. Report it, but never let a
         // failed history write stop the words from reaching the cursor.
         reportError("history_write_failed", String(e));
       }
     }
-    let copiedOnly = false;
+    let copied: CopiedReason | null = null;
     try {
-      await invoke("paste_text", { text });
+      await invoke("paste_text", { text, target });
     } catch (e) {
-      // Accessibility is off, but the transcript is on the clipboard: a
-      // completed dictation needing one extra keystroke, not a failure.
-      if (!String(e).includes(COPIED_NOT_PASTED)) throw e;
-      copiedOnly = true;
+      // Accessibility is off, or the user moved to another app: either way the
+      // transcript is on the clipboard — one keystroke away, not a failure.
+      copied = copiedReason(e);
+      if (!copied) throw e;
     }
     // The words are out of the app's hands — there is nothing left to retry.
     discardPendingTake();
     if (hasTauriRuntime()) void emit("dictation-complete", null);
     setState("done");
-    if (copiedOnly) {
-      setMessage("Copied — press ⌘V to paste");
-      setToastAction({
-        label: "Enable pasting",
-        run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
-      });
-      scheduleReset(TOAST_MS.copied, opId);
+    if (copied) {
+      showCopied(copied, "Copied", opId);
       return;
     }
     // Dictation-count milestones create frequent, visible progress wins; word
@@ -391,6 +457,21 @@ export default function FlowBar() {
       settings.notifications.milestones && [10, 50, 100, 500, 1000].includes(count);
     setMessage(milestone ? `🎉 ${count} dictations!` : "Done");
     scheduleReset(milestone ? TOAST_MS.milestone : TOAST_MS.done, opId);
+  }
+
+  /** The result is on the clipboard instead of pasted. Says why, and offers the
+   *  Accessibility fix only when that is actually the reason. */
+  function showCopied(reason: CopiedReason, lead: string, opId: number) {
+    if (reason === "target_changed") {
+      setMessage(`${lead} — you switched apps, press ⌘V`);
+    } else {
+      setMessage(`${lead} — press ⌘V to paste`);
+      setToastAction({
+        label: "Enable pasting",
+        run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
+      });
+    }
+    scheduleReset(TOAST_MS.copied, opId);
   }
 
   /** Failure handling for a take whose audio was captured: offers Retry when a
@@ -421,7 +502,7 @@ export default function FlowBar() {
     setState("processing");
     setMessage("Retrying…");
     try {
-      await deliverTake(take.blob, take.durationMs, opId);
+      await deliverTake(take.blob, take.durationMs, take.target, opId);
     } catch (e) {
       failAfterCapture(e);
     } finally {
@@ -432,6 +513,7 @@ export default function FlowBar() {
   /** ⌥T flow: grab the selection in the frontmost app, run the active
    *  transform, and paste the result over the still-active selection. */
   async function runTransformOnSelection() {
+    if (refuseUntilRestart()) return;
     if (busyRef.current || stateRef.current !== "idle") return;
     busyRef.current = true;
     clearResetTimer();
@@ -449,27 +531,24 @@ export default function FlowBar() {
     // Even with the bar configured hidden, a running transform must be visible.
     if (hasTauriRuntime()) void invoke("show_flowbar").catch(() => {});
     try {
+      // The selection is copied out of this app, so the result belongs back in it.
+      const target = await currentPasteTarget();
       const selection = await invoke<string>("capture_selection");
       const out = await transformText(selection, transform, settings);
       if (!out) {
         fail("Transform came back empty — try again");
         return;
       }
-      let copiedOnly = false;
+      let copied: CopiedReason | null = null;
       try {
-        await invoke("paste_text", { text: out });
+        await invoke("paste_text", { text: out, target });
       } catch (e) {
-        if (!String(e).includes(COPIED_NOT_PASTED)) throw e;
-        copiedOnly = true;
+        copied = copiedReason(e);
+        if (!copied) throw e;
       }
       setState("done");
-      if (copiedOnly) {
-        setMessage(`${transform.name} — copied, press ⌘V`);
-        setToastAction({
-          label: "Enable pasting",
-          run: () => void invoke("open_privacy_pane", { pane: "accessibility" }).catch(() => {}),
-        });
-        scheduleReset(TOAST_MS.copied, opId);
+      if (copied) {
+        showCopied(copied, `${transform.name} — copied`, opId);
         return;
       }
       setMessage(`${transform.name} ✓`);
@@ -480,6 +559,9 @@ export default function FlowBar() {
         fail("Select text first, then press the shortcut");
       } else if (msg.includes("empty_transform")) {
         fail("Transform came back empty — try again");
+      } else if (msg.includes("output_truncated")) {
+        // The model hit its output limit; the selection was never replaced.
+        fail("Result was too long — try a shorter selection");
       } else if (msg.includes("paste_busy")) {
         setState("done");
         setMessage("Another paste is in progress");
@@ -545,8 +627,9 @@ export default function FlowBar() {
   }
 
   function selectPolishLevel(level: CleanupLevel) {
+    // The bar edits the level of whichever style is active, not always Personal.
     const s = loadSettings();
-    saveSettings({ ...s, cleanupByCtx: { ...s.cleanupByCtx, personal: level } });
+    saveSettings({ ...s, cleanupByCtx: { ...s.cleanupByCtx, [s.activeCtx]: level } });
     setPolishLevel(level);
     if (hasTauriRuntime()) void emit("settings-changed", null);
     setActiveMenu(null);
@@ -642,9 +725,12 @@ export default function FlowBar() {
     setDockClosing(false);
     setDockOpen(false);
     busyRef.current = false;
-    // A bar configured hidden was shown for the recording — tuck it away again.
-    if (hasTauriRuntime() && !loadSettings().showFlowBar) {
-      void invoke("hide_flowbar").catch(() => {});
+    if (hasTauriRuntime()) {
+      // Catch-all for cancelled/failed takes — the menu-bar dot must never
+      // outlive the microphone.
+      void invoke("set_tray_recording", { recording: false }).catch(() => {});
+      // A bar configured hidden was shown for the recording — tuck it away again.
+      if (!loadSettings().showFlowBar) void invoke("hide_flowbar").catch(() => {});
     }
   }
 

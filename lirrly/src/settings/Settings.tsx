@@ -4,7 +4,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkForUpdate, installUpdate, restartApp } from "../lib/updater";
+import { checkForUpdate, installUpdate, pendingRestartVersion, restartApp } from "../lib/updater";
 import {
   DEFAULTS,
   hasTauriRuntime,
@@ -12,11 +12,11 @@ import {
   purgeStoredApiKey,
   resolveActiveTransform,
   saveSettings,
+  getInstallId,
   loadHistory,
   clearHistory,
-  writeHistory,
+  deleteHistoryItem,
   localDateKey,
-  isRtlText,
   LANGS,
   type AppSettings,
   type HistoryItem,
@@ -98,6 +98,8 @@ export default function Settings() {
   const [section, setSection] = useState<Section>("home");
   const [s, setS] = useState<AppSettings>(loadSettings());
   const [onboarded, setOnboarded] = useState(initialOnboarded);
+  /** Bumped by the tray's "Check for updates…" so the update card runs a visible check. */
+  const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
   const settingsEmitTimer = useRef<number | null>(null);
   const onboardingDoneRef = useRef(false);
 
@@ -152,6 +154,27 @@ export default function Settings() {
     void listen<string>("navigate-settings", (event) => {
       const next = event.payload as Section;
       if (SECTIONS.includes(next)) setSection(next);
+    })
+      .then((f) => {
+        if (alive) unlisten = f;
+        else f();
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, []);
+
+  // The tray's "Check for updates…" lands here instead of on the GitHub
+  // releases page (audit A36), so updates always take the signed in-app path.
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    let alive = true;
+    void listen("check-for-updates", () => {
+      setSection("account");
+      setUpdateCheckRequest((n) => n + 1);
     })
       .then((f) => {
         if (alive) unlisten = f;
@@ -281,15 +304,38 @@ export default function Settings() {
         {section === "insights" && <Insights />}
         {section === "shortcuts" && <ShortcutsPanel s={s} update={update} />}
         {section === "settings" && <General s={s} update={update} onJump={setSection} />}
-        {section === "account" && <Account s={s} update={update} />}
+        {section === "account" && (
+          <Account s={s} update={update} updateCheckRequest={updateCheckRequest} />
+        )}
       </main>
     </div>
   );
 }
 
 /* ---------- shared ---------- */
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return <button className={`toggle ${on ? "on" : ""}`} onClick={onClick} aria-pressed={on} />;
+/** The visual switch has no text of its own, so every use must name itself
+ *  for VoiceOver (audit A23) — hence the required `label`. */
+function Toggle({
+  on,
+  onClick,
+  label,
+  disabled,
+}: {
+  on: boolean;
+  onClick: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      className={`toggle ${on ? "on" : ""}`}
+      onClick={onClick}
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+    />
+  );
 }
 function wordCount(t: string): number {
   const x = t.trim();
@@ -421,7 +467,7 @@ function Home({ s, onJump }: { s: AppSettings; onJump: (s: Section) => void }) {
                       <time>
                         {new Date(it.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                       </time>
-                      <p dir={isRtlText(it.text) ? "rtl" : undefined}>{it.text}</p>
+                      <p dir="auto">{it.text}</p>
                       <div className="row-actions">
                         <button
                           title="Copy"
@@ -492,39 +538,73 @@ function HistoryView({ s }: { s: AppSettings }) {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest" | "longest">("newest");
-  const [transformingAt, setTransformingAt] = useState<number | null>(null);
-  const [transformedAt, setTransformedAt] = useState<number | null>(null);
-  const [transformError, setTransformError] = useState("");
+  const [transformingId, setTransformingId] = useState<string | null>(null);
+  const [transformedId, setTransformedId] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState("");
   useEffect(() => {
     void loadHistory().then(setItems);
+    if (!hasTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    let alive = true;
+    // A dictation can land while History is open; show it rather than a stale list.
+    void listen("dictation-complete", () => void loadHistory().then(setItems))
+      .then((f) => {
+        if (alive) unlisten = f;
+        else f();
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
   }, []);
 
-  function del(target: HistoryItem) {
-    const next = items.filter((x) => !(x.at === target.at && x.text === target.text));
-    void writeHistory(next);
-    setItems(next);
+  /** Delete by id against the saved list, then show what is actually saved. */
+  async function del(target: HistoryItem) {
+    setHistoryError("");
+    setItems((prev) => prev.filter((x) => x.id !== target.id));
+    try {
+      await deleteHistoryItem(target.id);
+    } catch {
+      setHistoryError("Couldn't delete that entry — it is still saved.");
+    }
+    setItems(await loadHistory());
+  }
+
+  async function clearAll() {
+    setHistoryError("");
+    try {
+      await clearHistory();
+      setItems([]);
+    } catch {
+      setHistoryError("Couldn't clear history — nothing was removed.");
+      setItems(await loadHistory());
+    }
   }
 
   /** History ✨: run the active transform and put the result on the clipboard. */
   async function transformToClipboard(it: HistoryItem) {
-    if (transformingAt !== null) return;
-    setTransformingAt(it.at);
-    setTransformError("");
+    if (transformingId !== null) return;
+    setTransformingId(it.id);
+    setHistoryError("");
     try {
       const out = await transformText(it.text, resolveActiveTransform(s), s);
       if (!out) throw new Error("empty_transform");
       await navigator.clipboard?.writeText(out);
-      setTransformedAt(it.at);
-      window.setTimeout(() => setTransformedAt((v) => (v === it.at ? null : v)), 1600);
+      setTransformedId(it.id);
+      window.setTimeout(() => setTransformedId((v) => (v === it.id ? null : v)), 1600);
     } catch (e) {
       // Surfaceable: key/network problems belong to the user, not the console.
-      setTransformError(
-        String(e).includes("missing_api_key")
+      const msg = String(e);
+      setHistoryError(
+        msg.includes("missing_api_key")
           ? "Transform needs a Groq key — add one in Settings."
-          : "Transform failed — check your connection and Groq key."
+          : msg.includes("output_truncated")
+            ? "The result was too long and got cut off — nothing was copied."
+            : "Transform failed — check your connection and Groq key."
       );
     } finally {
-      setTransformingAt(null);
+      setTransformingId(null);
     }
   }
 
@@ -566,11 +646,11 @@ function HistoryView({ s }: { s: AppSettings }) {
           </select>
         </div>
       )}
-      {transformError && (
+      {historyError && (
         <div className="card" style={{ borderColor: "var(--danger)" }}>
           <div className="row">
             <div className="meta">
-              <label style={{ color: "var(--danger)" }}>{transformError}</label>
+              <label style={{ color: "var(--danger)" }}>{historyError}</label>
             </div>
           </div>
         </div>
@@ -593,10 +673,10 @@ function HistoryView({ s }: { s: AppSettings }) {
             <div className="daygroup">{g.label}</div>
             <div className="card">
               <ul className="hist">
-                {g.items.map((it, i) => (
-                  <li key={`${it.at}-${i}`} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                {g.items.map((it) => (
+                  <li key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="t" dir={isRtlText(it.text) ? "rtl" : undefined}>
+                      <div className="t" dir="auto">
                         {it.text}
                       </div>
                       <span className="when">
@@ -610,7 +690,7 @@ function HistoryView({ s }: { s: AppSettings }) {
                         title={`Transform with “${resolveActiveTransform(s).name}” and copy`}
                         onClick={() => void transformToClipboard(it)}
                       >
-                        {transformingAt === it.at ? "…" : transformedAt === it.at ? "✓" : "✨"}
+                        {transformingId === it.id ? "…" : transformedId === it.id ? "✓" : "✨"}
                       </button>
                       <button
                         className="iconbtn"
@@ -621,7 +701,7 @@ function HistoryView({ s }: { s: AppSettings }) {
                       >
                         ⧉
                       </button>
-                      <button className="iconbtn" title="Delete" onClick={() => del(it)}>
+                      <button className="iconbtn" title="Delete" onClick={() => void del(it)}>
                         🗑
                       </button>
                     </div>
@@ -633,13 +713,7 @@ function HistoryView({ s }: { s: AppSettings }) {
         ))
       )}
       {items.length > 0 && (
-        <button
-          className="btn"
-          onClick={() => {
-            void clearHistory();
-            setItems([]);
-          }}
-        >
+        <button className="btn" onClick={() => void clearAll()}>
           Clear history
         </button>
       )}
@@ -1023,20 +1097,50 @@ const CHAT_MODELS = [
   { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B (most capable)" },
   { id: "allam-2-7b", label: "ALLaM 2 7B (Arabic-first)" },
 ];
+const CTX_LABELS: Record<CtxKey, string> = {
+  personal: "Personal Messages",
+  work: "Work Messages",
+  email: "Email",
+  other: "Other",
+};
 function Styles({ s, update }: { s: AppSettings; update: Update }) {
-  const [ctx, setCtx] = useState<CtxKey>("personal");
+  const [ctx, setCtx] = useState<CtxKey>(s.activeCtx);
   const level = s.cleanupByCtx[ctx];
   const setLevel = (l: CleanupLevel) => update({ cleanupByCtx: { ...s.cleanupByCtx, [ctx]: l } });
   return (
     <>
       <h1>Styles</h1>
-      <p className="sub">How much Lirrly polishes your words — set independently per context.</p>
+      <p className="sub">
+        How much Lirrly polishes your words — set independently per context. Dictations
+        use the <b>{CTX_LABELS[s.activeCtx]}</b> style; mail apps switch to Email automatically.
+      </p>
       <div className="tabs">
         {(["personal", "work", "email", "other"] as const).map((t) => (
           <button key={t} className={`tab ${ctx === t ? "active" : ""}`} onClick={() => setCtx(t)}>
-            {t === "personal" ? "Personal Messages" : t === "work" ? "Work Messages" : t === "email" ? "Email" : "Other"}
+            {s.activeCtx === t ? "● " : ""}
+            {CTX_LABELS[t]}
           </button>
         ))}
+      </div>
+      <div className="card">
+        <div className="row">
+          <div className="meta">
+            <label>Use for dictation</label>
+            <p>
+              {s.activeCtx === ctx
+                ? `New dictations are polished with the ${CTX_LABELS[ctx]} style.`
+                : `Make ${CTX_LABELS[ctx]} the style dictations use.`}{" "}
+              Dictating into Mail, Outlook, Thunderbird or Spark always uses Email.
+            </p>
+          </div>
+          {s.activeCtx === ctx ? (
+            <span className="pillstat ok">Active</span>
+          ) : (
+            <button className="btn" onClick={() => update({ activeCtx: ctx })}>
+              Use this style
+            </button>
+          )}
+        </div>
       </div>
       <div className="cardgrid">
         {STYLE_LEVELS.map((lvl) => (
@@ -1056,7 +1160,7 @@ function Styles({ s, update }: { s: AppSettings; update: Update }) {
             <label>AI cleanup layer</label>
             <p>Uses the same Groq key to polish medium and high cleanup after transcription.</p>
           </div>
-          <Toggle on={s.cleanupAiEnabled} onClick={() => update({ cleanupAiEnabled: !s.cleanupAiEnabled })} />
+          <Toggle label="AI cleanup layer" on={s.cleanupAiEnabled} onClick={() => update({ cleanupAiEnabled: !s.cleanupAiEnabled })} />
         </div>
         <div className="row">
           <div className="meta">
@@ -1276,23 +1380,55 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
     sRef.current = s;
   }, [s]);
 
-  async function applyCombo(action: string, combo: string[]) {
-    setError("");
+  /** Native registration only; true means the accelerator is actually live. */
+  async function tryBind(action: string, combo: string[]): Promise<boolean> {
     const accelerator = symbolsToAccelerator(combo);
-    if (!accelerator) {
-      setError("Add a regular key, not just modifiers.");
-      return;
-    }
+    if (!accelerator) return false;
     if (hasTauriRuntime() && (action === "dictation" || action === "transform")) {
       try {
         await invoke("update_shortcut", { action, accelerator });
       } catch {
         // Registration failed (likely a system conflict) — old binding stays live.
-        setError("That combination isn't available — kept the previous shortcut.");
-        return;
+        return false;
       }
     }
+    return true;
+  }
+
+  async function applyCombo(action: string, combo: string[]) {
+    setError("");
+    if (!symbolsToAccelerator(combo)) {
+      setError("Add a regular key, not just modifiers.");
+      return;
+    }
+    if (!(await tryBind(action, combo))) {
+      setError("That combination isn't available — kept the previous shortcut.");
+      return;
+    }
     update({ shortcuts: { ...sRef.current.shortcuts, [action]: combo } });
+  }
+
+  /** Persist only what actually re-registered (audit A20: Reset used to save
+   *  the defaults even when the native rebind failed, so the UI showed a
+   *  shortcut that was not the live one). */
+  async function resetToDefaults() {
+    setError("");
+    const next = { ...sRef.current.shortcuts };
+    const kept: string[] = [];
+    for (const action of ["dictation", "transform"] as const) {
+      if (await tryBind(action, DEFAULT_SHORTCUTS[action])) {
+        next[action] = DEFAULT_SHORTCUTS[action];
+      } else {
+        kept.push(SHORTCUT_ACTIONS.find((a) => a.key === action)?.label ?? action);
+      }
+    }
+    // Unimplemented actions have no native binding that can fail.
+    next.commandMode = DEFAULT_SHORTCUTS.commandMode;
+    next.scratchpad = DEFAULT_SHORTCUTS.scratchpad;
+    update({ shortcuts: next });
+    if (kept.length) {
+      setError(`${kept.join(" and ")}: the default isn't available — kept your current binding.`);
+    }
   }
 
   useEffect(() => {
@@ -1366,14 +1502,7 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
           );
         })}
         <div className="row">
-          <button
-            className="btn"
-            onClick={() => {
-              void applyCombo("dictation", DEFAULT_SHORTCUTS.dictation);
-              void applyCombo("transform", DEFAULT_SHORTCUTS.transform);
-              update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
-            }}
-          >
+          <button className="btn" onClick={() => void resetToDefaults()}>
             Reset to defaults
           </button>
         </div>
@@ -1383,10 +1512,12 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
 }
 
 /* ---------- Settings (General + Engine) ---------- */
+// Only models confirmed live on Groq. Re-check `GET /v1/models` before every
+// release: withdrawn entries here break dictation outright (see
+// RETIRED_SPEECH_MODELS, which migrates anyone already on one).
 const MODELS = [
   { id: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo" },
   { id: "whisper-large-v3", label: "Whisper Large v3" },
-  { id: "distil-whisper-large-v3-en", label: "Distil Whisper v3 (English)" },
 ];
 function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump: (x: Section) => void }) {
   const [key, setKey] = useState("");
@@ -1504,11 +1635,15 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
             <p>Keep the pill visible, or only while dictating.</p>
           </div>
           <Toggle
+            label="Show Lirrly bar at all times"
             on={s.showFlowBar}
             onClick={() => {
               const next = !s.showFlowBar;
               update({ showFlowBar: next });
-              void invoke(next ? "show_flowbar" : "hide_flowbar");
+              // Showing is safe immediately. Hiding is the FlowBar's decision
+              // (via the settings-changed ping): it may be mid-recording, and a
+              // hot microphone must never be invisible (audit A21).
+              if (next) void invoke("show_flowbar");
             }}
           />
         </div>
@@ -1534,7 +1669,7 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
             <label>Launch at login</label>
             <p>Start Lirrly automatically.</p>
           </div>
-          <Toggle on={s.launchAtLogin} onClick={() => void toggleAutostart()} />
+          <Toggle label="Launch at login" on={s.launchAtLogin} onClick={() => void toggleAutostart()} />
         </div>
         <div className="row">
           <div className="meta">
@@ -1615,7 +1750,7 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
             <label>Errors &amp; failures</label>
             <p>Alert when a dictation fails and the Lirrly bar is hidden.</p>
           </div>
-          <Toggle on={notif.errors} onClick={() => update({ notifications: { ...notif, errors: !notif.errors } })} />
+          <Toggle label="Error and failure notifications" on={notif.errors} onClick={() => update({ notifications: { ...notif, errors: !notif.errors } })} />
         </div>
         <div className="row">
           <div className="meta">
@@ -1623,6 +1758,7 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
             <p>Celebrate dictation-count milestones in the Lirrly bar.</p>
           </div>
           <Toggle
+            label="Milestone notifications"
             on={notif.milestones}
             onClick={() => update({ notifications: { ...notif, milestones: !notif.milestones } })}
           />
@@ -1634,8 +1770,8 @@ function General({ s, update, onJump }: { s: AppSettings; update: Update; onJump
             </label>
             <p>Be notified when a new version is available.</p>
           </div>
-          <span style={{ opacity: 0.45, pointerEvents: "none" }}>
-            <Toggle on={notif.updates} onClick={() => {}} />
+          <span style={{ opacity: 0.45 }}>
+            <Toggle label="App update notifications (coming soon)" on={notif.updates} onClick={() => {}} disabled />
           </span>
         </div>
       </div>
@@ -1760,20 +1896,47 @@ type UpdateState =
   | { kind: "installed" }
   | { kind: "error"; message: string };
 
-function UpdateCard({ version }: { version: string }) {
-  const [state, setState] = useState<UpdateState>({ kind: "idle" });
+/** The last tray request a card has answered. Module-level so reopening the
+ *  Account section does not replay an old request as a fresh check. */
+let handledUpdateCheckRequest = 0;
+
+function UpdateCard({ version, checkRequest }: { version: string; checkRequest: number }) {
+  // An update installed earlier in this run is still waiting for its restart
+  // (A36): reopening the Hub must offer Restart, not the same install again.
+  const [state, setState] = useState<UpdateState>(() =>
+    pendingRestartVersion() ? { kind: "installed" } : { kind: "idle" }
+  );
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // One quiet check when the Hub opens. It never downloads on its own —
-  // finding an update only changes the label on the button.
+  // finding an update only changes the label on the button. Skipped when a
+  // restart is pending or the tray just asked for a visible check instead.
   useEffect(() => {
+    if (stateRef.current.kind === "installed" || checkRequest > handledUpdateCheckRequest) return;
     void checkForUpdate()
       .then((found) => {
-        if (found) setState({ kind: "available", version: found.version });
+        if (found && stateRef.current.kind === "idle") {
+          setState({ kind: "available", version: found.version });
+        }
       })
       .catch(() => {
         /* offline or GitHub unreachable — stay silent until asked */
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount
   }, []);
+
+  // The tray's "Check for updates…" (A36): a visible check, as if the button
+  // were pressed — unless an install is running or done, which it would undo.
+  useEffect(() => {
+    if (checkRequest <= handledUpdateCheckRequest) return;
+    handledUpdateCheckRequest = checkRequest;
+    const kind = stateRef.current.kind;
+    if (kind === "checking" || kind === "downloading" || kind === "installed") return;
+    void Promise.resolve().then(check);
+  }, [checkRequest]);
 
   async function check() {
     setState({ kind: "checking" });
@@ -1818,7 +1981,7 @@ function UpdateCard({ version }: { version: string }) {
             Lirrly {version || "—"}
             {state.kind === "available" && ` · ${state.version} available`}
             {state.kind === "current" && " · up to date"}
-            {state.kind === "installed" && " · restart to finish"}
+            {state.kind === "installed" && " · restart to finish — dictation waits until you do"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1845,7 +2008,42 @@ function UpdateCard({ version }: { version: string }) {
   );
 }
 
-function Account({ s, update }: { s: AppSettings; update: Update }) {
+/** The pseudonymous identifier crash reports and feedback travel under. Shown
+ *  so a deletion request can quote it (privacy policy, "Your rights"). */
+function InstallIdRow() {
+  const [id] = useState(() => getInstallId());
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="row">
+      <div className="meta">
+        <label>Install ID</label>
+        <p>Quote this in a feedback message to have everything sent under it deleted.</p>
+      </div>
+      <button
+        className="btn"
+        style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}
+        title="Copy install ID"
+        onClick={() => {
+          void navigator.clipboard?.writeText(id).catch(() => {});
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        {copied ? "Copied" : id}
+      </button>
+    </div>
+  );
+}
+
+function Account({
+  s,
+  update,
+  updateCheckRequest,
+}: {
+  s: AppSettings;
+  update: Update;
+  updateCheckRequest: number;
+}) {
   const [version, setVersion] = useState("");
   useEffect(() => {
     if (hasTauriRuntime()) void getVersion().then(setVersion).catch(() => {});
@@ -1882,22 +2080,24 @@ function Account({ s, update }: { s: AppSettings; update: Update }) {
             <label>Store history locally</label>
             <p>Transcriptions are kept on this Mac only.</p>
           </div>
-          <Toggle on={s.storeHistory} onClick={() => update({ storeHistory: !s.storeHistory })} />
+          <Toggle label="Store history locally" on={s.storeHistory} onClick={() => update({ storeHistory: !s.storeHistory })} />
         </div>
         <div className="row">
           <div className="meta">
-            <label>Send anonymous crash reports</label>
+            <label>Send crash reports</label>
             <p>
-              Off by default. When on, Lirrly sends only an anonymous ID, app/macOS version,
-              and error details when something breaks — never transcripts, audio, or your key.
-              Helps fix bugs faster.
+              Off by default. When on, error reports carry this install's random ID,
+              app/macOS version, and a reduced error code — never transcripts, audio, or
+              your key. Pseudonymous: the ID links your reports together, and to feedback
+              you choose to send. Kept 180 days (feedback 365), then deleted.
             </p>
           </div>
-          <Toggle on={s.shareAnalytics} onClick={() => update({ shareAnalytics: !s.shareAnalytics })} />
+          <Toggle label="Send crash reports" on={s.shareAnalytics} onClick={() => update({ shareAnalytics: !s.shareAnalytics })} />
         </div>
+        <InstallIdRow />
       </div>
       <FeedbackCard version={version} />
-      <UpdateCard version={version} />
+      <UpdateCard version={version} checkRequest={updateCheckRequest} />
     </>
   );
 }

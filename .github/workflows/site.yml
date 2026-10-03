@@ -2,7 +2,9 @@ name: Deploy site
 
 on:
   push:
-    branches: ["main", "open-source-wispr-flow-clone", "lirrly"]
+    # Production is main only. The github-pages environment enforces the same
+    # rule server-side; this keeps other branches from queuing doomed deploys.
+    branches: ["main"]
     paths: ["site/**", ".github/workflows/site.yml"]
   workflow_dispatch:
 

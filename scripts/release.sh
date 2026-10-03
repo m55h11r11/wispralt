@@ -56,7 +56,8 @@ command -v gh >/dev/null || die "gh CLI not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated"
 if [ "$PUBLISH_ONLY" = 1 ]; then
   [ -n "$(git -C "$ROOT" tag -l "v$VERSION")" ] || die "no local tag v$VERSION — run the build phase first"
-  gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&1 && die "release v$VERSION is already published"
+  gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&1 \
+    && die "release v$VERSION already exists (maybe a draft from an aborted run — check: gh release view v$VERSION)"
   echo "  ok — publishing already-built v$VERSION"
 else
   [ -z "$(git -C "$ROOT" tag -l "v$VERSION")" ] || die "tag v$VERSION already exists — did you mean --publish-only?"
@@ -227,26 +228,41 @@ if [ "$PUBLIC_VERSION" != "$VERSION" ]; then
 fi
 echo "  ok — origin/main $(git -C "$ROOT" rev-parse --short origin/main) declares $VERSION"
 
-step "Publishing GitHub release"
+step "Uploading GitHub release (draft)"
 NOTES_ARGS=(--generate-notes)
 [ -n "$NOTES" ] && NOTES_ARGS=(--notes-file "$NOTES")
+# Draft first (A31): the assets upload while nothing is public, and the
+# updater's `releases/latest` keeps serving the previous version. A failure
+# anywhere before "Going live" leaves every channel exactly as it was.
 gh release create "v$VERSION" \
   "$OUT/Lirrly_${VERSION}_aarch64.dmg" \
   "$OUT/$ASSET_TARBALL" \
   "$OUT/Lirrly_${VERSION}_aarch64.dmg.sha256" \
   "$OUT/latest.json" \
-  --repo "$REPO" --target "$PUBLIC_SHA" --title "Lirrly $VERSION" --latest "${NOTES_ARGS[@]}"
+  --repo "$REPO" --target "$PUBLIC_SHA" --title "Lirrly $VERSION" --draft "${NOTES_ARGS[@]}"
 
-step "Updating Homebrew tap"
+step "Preparing Homebrew tap"
+TAP_READY=0
 if [ -d "$TAP/.git" ]; then
   /usr/bin/sed -i '' "s/  version \".*\"/  version \"$VERSION\"/" "$TAP/Casks/lirrly.rb"
   /usr/bin/sed -i '' "s/  sha256 \".*\"/  sha256 \"$DMG_SHA\"/" "$TAP/Casks/lirrly.rb"
-  git -C "$TAP" add -A
+  git -C "$TAP" add Casks/lirrly.rb
   git -C "$TAP" commit -m "lirrly $VERSION" || true
-  git -C "$TAP" push
-  echo "  ok — tap updated to $VERSION"
+  TAP_READY=1
+  echo "  ok — tap commit ready; pushed the moment the release is live"
 else
   echo "  skipped — no tap checkout at $TAP"
+fi
+
+step "Going live"
+# The one public step, last: flip the draft to published-and-latest, then let
+# brew follow immediately. The cask URL 404s while the release is a draft,
+# which is why the tap push must come after this flip, never before.
+gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+if [ "$TAP_READY" = 1 ]; then
+  git -C "$TAP" push \
+    || die "release v$VERSION is LIVE but the tap push failed — finish it by hand: git -C '$TAP' push"
+  echo "  ok — tap updated to $VERSION"
 fi
 
 echo

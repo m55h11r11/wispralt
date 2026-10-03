@@ -8,6 +8,7 @@ import {
   loadHistory,
   loadSettings,
   RETIRED_CHAT_MODELS,
+  RETIRED_SPEECH_MODELS,
   localDateKey,
   pushHistory,
   resolveActiveTransform,
@@ -150,6 +151,27 @@ describe("retired chat model migration", () => {
 
   it("ships a default that is not itself retired", () => {
     expect(RETIRED_CHAT_MODELS).not.toContain(DEFAULTS.cleanupModel);
+  });
+});
+
+describe("retired speech model migration", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("migrates a settings file pointing at a speech model Groq removed", () => {
+    // distil-whisper-large-v3-en was in the picker and vanished from Groq's
+    // model list in Sept 2026. Only chat models were migrated, so anyone who
+    // had chosen it kept sending it and every dictation failed.
+    saveSettings({ ...DEFAULTS, model: "distil-whisper-large-v3-en" });
+    expect(loadSettings().model).toBe(DEFAULTS.model);
+  });
+
+  it("leaves a live speech model the user deliberately chose alone", () => {
+    saveSettings({ ...DEFAULTS, model: "whisper-large-v3" });
+    expect(loadSettings().model).toBe("whisper-large-v3");
+  });
+
+  it("ships a default that is not itself retired", () => {
+    expect(RETIRED_SPEECH_MODELS).not.toContain(DEFAULTS.model);
   });
 });
 

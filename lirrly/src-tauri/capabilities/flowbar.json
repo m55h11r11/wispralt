@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "flowbar",
-  "description": "Floating bar overlay — least privilege: custom commands, events, and history writes only",
+  "description": "Floating bar overlay — least privilege: custom commands, events, history writes, and the relaunch that finishes an installed update",
   "windows": ["flowbar"],
   "permissions": [
     "core:default",
     "store:default",
-    "notification:default"
+    "notification:default",
+    "process:allow-restart"
   ]
 }

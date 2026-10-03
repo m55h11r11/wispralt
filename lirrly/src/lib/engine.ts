@@ -1,6 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, CleanupLevel, CtxKey, Snippet, Transform } from "./store";
 
+/** Bundle ids that unambiguously mean "writing an email". Anything less
+ *  clear-cut (Slack? WhatsApp?) keeps the user's explicitly chosen style —
+ *  guessing wrong would apply settings the user never picked (audit A19). */
+const EMAIL_APPS = new Set([
+  "com.apple.mail",
+  "com.microsoft.Outlook",
+  "org.mozilla.thunderbird",
+  "com.readdle.SparkDesktop",
+]);
+
+/** The style a dictation should use: the paste target when it is clearly an
+ *  email app, otherwise the style the user marked active in Settings. */
+export function resolveCtx(active: CtxKey, targetBundleId: string | null | undefined): CtxKey {
+  return targetBundleId && EMAIL_APPS.has(targetBundleId) ? "email" : active;
+}
+
 /**
  * Transcribe an audio clip. Routes to Groq Whisper via the Rust backend, biases
  * recognition with the personal dictionary, cleans the text, then expands snippets.

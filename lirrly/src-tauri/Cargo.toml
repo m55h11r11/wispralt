@@ -1,6 +1,6 @@
 [package]
 name = "lirrly"
-version = "0.4.2"
+version = "0.4.3"
 description = "Lirrly — voice dictation"
 authors = ["mshrmnsr"]
 license = "AGPL-3.0-only"
@@ -32,3 +32,8 @@ tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 macos-accessibility-client = "0.0.2"
+# Frontmost-app detection for paste targeting. Already built into the app via
+# tauri/tao/opener at these versions; listed so the features are explicit.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSPasteboardItem", "NSEvent"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSData", "NSEnumerator"] }

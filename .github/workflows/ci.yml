@@ -35,8 +35,10 @@ jobs:
       - run: npm test
         working-directory: lirrly
 
+  # Same commands as the release gates in scripts/release.sh, so a green CI run
+  # means the release gates will pass too. `cargo check` alone never ran a test.
   rust:
-    name: Rust (check · fmt · clippy)
+    name: Rust app (fmt · clippy · test)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,9 +48,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: lirrly/src-tauri
-      - run: cargo check
-        working-directory: lirrly/src-tauri
       - run: cargo fmt --check
         working-directory: lirrly/src-tauri
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
         working-directory: lirrly/src-tauri
+      - run: cargo test
+        working-directory: lirrly/src-tauri
+
+  # lirrly-core is a path dependency: building or testing the app compiles it
+  # but never runs its own tests, which cover the Groq request/response handling.
+  core:
+    name: Rust core (fmt · clippy · test)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/lirrly-core
+      - run: cargo fmt --check
+        working-directory: crates/lirrly-core
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: crates/lirrly-core
+      - run: cargo test
+        working-directory: crates/lirrly-core

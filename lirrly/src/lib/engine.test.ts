@@ -4,7 +4,7 @@ import type { Snippet } from "./store";
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { applyCleanup, applySnippets, transcribe } from "./engine";
+import { applyCleanup, applySnippets, resolveCtx, transcribe } from "./engine";
 import { DEFAULTS } from "./store";
 
 describe("applyCleanup", () => {
@@ -157,5 +157,18 @@ describe("transcribe IPC contract", () => {
     expect(Object.keys(args).sort()).toEqual(
       ["audioB64", "language", "mime", "model", "prompt"].sort()
     );
+  });
+});
+
+describe("resolveCtx (A19: the styles people configure must actually apply)", () => {
+  it("uses the user's active style when the target is not an email app", () => {
+    expect(resolveCtx("work", "com.tinyspeck.slackmacgap")).toBe("work");
+    expect(resolveCtx("other", null)).toBe("other");
+    expect(resolveCtx("personal", undefined)).toBe("personal");
+  });
+
+  it("switches to the email style inside known mail clients", () => {
+    expect(resolveCtx("personal", "com.apple.mail")).toBe("email");
+    expect(resolveCtx("work", "com.microsoft.Outlook")).toBe("email");
   });
 });

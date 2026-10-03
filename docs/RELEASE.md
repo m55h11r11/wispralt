@@ -111,7 +111,11 @@ npm run tauri build
 # 4. Verify
 codesign -dv --verbose=2 "src-tauri/target/release/bundle/macos/Lirrly.app"
 spctl --assess --type exec -vv "src-tauri/target/release/bundle/macos/Lirrly.app"
-xcrun stapler validate "src-tauri/target/release/bundle/dmg/Lirrly_<version>_aarch64.dmg"
+# Staple lives on the .app, not the DMG: Tauri notarizes and staples the app,
+# then builds and signs the DMG around it. Validating the DMG always reports
+# "does not have a ticket stapled" — that is expected and matches every shipped
+# release. The app inside is what Gatekeeper evaluates on launch.
+xcrun stapler validate "src-tauri/target/release/bundle/macos/Lirrly.app"
 
 # 5. Built-app smoke test (fresh user account or wiped state):
 #    onboarding wizard → key validate → first dictation → paste lands;

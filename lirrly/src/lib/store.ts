@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { load, type Store } from "@tauri-apps/plugin-store";
 
 export type CleanupLevel = "none" | "light" | "medium" | "high";
@@ -35,6 +36,9 @@ export interface AppSettings {
   cleanupModel: string;
   language: string;
   cleanupByCtx: Record<CtxKey, CleanupLevel>;
+  /** Style dictations use (audit A19: these settings must actually apply).
+   *  Email apps switch to the "email" style automatically — see resolveCtx. */
+  activeCtx: CtxKey;
   dictionary: DictionaryWord[];
   snippets: Snippet[];
   transforms: Transform[];
@@ -93,6 +97,13 @@ export const RETIRED_CHAT_MODELS = [
   "gemma2-9b-it",
 ];
 
+/** Speech models Groq has withdrawn. A stored setting pointing at one of these
+ *  fails every dictation with no way for the user to know why, and until
+ *  2026-09-25 only *chat* models were migrated — so the speech setting had no
+ *  recovery path at all. `distil-whisper-large-v3-en` was offered in the model
+ *  picker and disappeared from `GET /v1/models` between 2026-09-17 and -09-25. */
+export const RETIRED_SPEECH_MODELS = ["distil-whisper-large-v3-en"];
+
 export const DEFAULTS: AppSettings = {
   provider: "groq",
   groqApiKey: "",
@@ -101,6 +112,7 @@ export const DEFAULTS: AppSettings = {
   cleanupModel: "qwen/qwen3.8-27b",
   language: "auto",
   cleanupByCtx: { personal: "light", work: "medium", email: "medium", other: "light" },
+  activeCtx: "personal",
   dictionary: [],
   snippets: [],
   transforms: BUILTIN_TRANSFORMS,
@@ -201,7 +213,11 @@ function sanitizeSettings(stored: Record<string, unknown>): Partial<AppSettings>
   const next: Partial<AppSettings> = {};
   if (typeof stored.provider === "string") next.provider = stored.provider;
   if (typeof stored.groqApiKey === "string") next.groqApiKey = stored.groqApiKey;
-  if (typeof stored.model === "string") next.model = stored.model;
+  if (typeof stored.model === "string") {
+    // Same reasoning as cleanupModel below: a retired speech model must not
+    // survive an upgrade, or dictation fails for reasons the user cannot see.
+    next.model = RETIRED_SPEECH_MODELS.includes(stored.model) ? DEFAULTS.model : stored.model;
+  }
   if (typeof stored.cleanupAiEnabled === "boolean") next.cleanupAiEnabled = stored.cleanupAiEnabled;
   if (typeof stored.cleanupModel === "string") {
     // Groq retires models; a setting pointing at a dead one would break cleanup
@@ -224,6 +240,9 @@ function sanitizeSettings(stored: Record<string, unknown>): Partial<AppSettings>
 
   const cleanupByCtx = sanitizeCleanupByCtx(stored.cleanupByCtx);
   if (cleanupByCtx) next.cleanupByCtx = { ...DEFAULTS.cleanupByCtx, ...cleanupByCtx };
+  if (typeof stored.activeCtx === "string" && stored.activeCtx in DEFAULTS.cleanupByCtx) {
+    next.activeCtx = stored.activeCtx as CtxKey;
+  }
   const notifications = sanitizeNotifications(stored.notifications);
   if (notifications) next.notifications = { ...DEFAULTS.notifications, ...notifications };
   const shortcuts = sanitizeShortcuts(stored.shortcuts);
@@ -278,8 +297,10 @@ export function purgeStoredApiKey(): void {
   }
 }
 
-/** A random, anonymous per-install id — used only to group opt-in crash reports
- *  (never tied to identity). Generated once and kept in localStorage. */
+/** A random per-install id, generated once and kept in localStorage. It groups
+ *  opt-in crash reports and travels with feedback, so it is *pseudonymous*: it
+ *  links those to each other (and to an email typed into feedback), which is
+ *  exactly what makes a deletion request satisfiable. Shown in Settings. */
 export function getInstallId(): string {
   const KEY = "lirrly.install_id";
   let id = localStorage.getItem(KEY);
@@ -317,6 +338,9 @@ export function localDateKey(ts: number): string {
 }
 
 export interface HistoryItem {
+  /** Stable identity, assigned when the entry is written. Entries from before
+   *  0.4.3 receive one on their first read (`history_migrate`). */
+  id: string;
   text: string;
   at: number;
   /** Recording length — present on items captured after v0.2 (used for real WPM). */
@@ -326,7 +350,10 @@ export interface HistoryItem {
   style?: CleanupLevel;
 }
 
-function isHistoryItem(value: unknown): value is HistoryItem {
+/** An entry's shape apart from its id — what pre-0.4.3 installs stored. */
+type StoredHistoryItem = Omit<HistoryItem, "id"> & { id?: unknown };
+
+function isUnidentifiedHistoryItem(value: unknown): value is StoredHistoryItem {
   return (
     isRecord(value) &&
     typeof value.text === "string" &&
@@ -336,6 +363,19 @@ function isHistoryItem(value: unknown): value is HistoryItem {
     (value.wpm === undefined || typeof value.wpm === "number") &&
     (value.style === undefined || isCleanupLevel(value.style))
   );
+}
+
+function isHistoryItem(value: unknown): value is HistoryItem {
+  return isUnidentifiedHistoryItem(value) && typeof value.id === "string";
+}
+
+/** Same shape as the native `mint_history_id`: timestamp in hex plus a counter
+ *  that skips any id already taken. */
+function mintHistoryId(taken: ReadonlySet<string>, at: number): string {
+  for (let n = 0; ; n++) {
+    const id = `h${Math.max(0, Math.floor(at)).toString(16)}-${n}`;
+    if (!taken.has(id)) return id;
+  }
 }
 
 /* History lives in a Tauri-managed file (appDataDir/history.json) rather than
@@ -353,12 +393,30 @@ function getHistoryStore(): Promise<Store> {
   return historyStore;
 }
 
-function loadHistoryLocal(): HistoryItem[] {
+/** The pre-store localStorage list exactly as saved, minus malformed entries. */
+function loadUnidentifiedHistoryLocal(): StoredHistoryItem[] {
   try {
-    return parseJsonArray(getStoredValue(HKEY, LEGACY_HKEY)).filter(isHistoryItem);
+    return parseJsonArray(getStoredValue(HKEY, LEGACY_HKEY)).filter(isUnidentifiedHistoryItem);
   } catch {
     return [];
   }
+}
+
+/** Browser-preview history (no Tauri). Missing ids are assigned in list order,
+ *  so repeated reads agree until the next local write persists them. */
+function loadHistoryLocal(): HistoryItem[] {
+  const items = loadUnidentifiedHistoryLocal();
+  const taken = new Set(items.flatMap((it) => (typeof it.id === "string" ? [it.id] : [])));
+  return items.map((it) => {
+    if (typeof it.id === "string") return it as HistoryItem;
+    const id = mintHistoryId(taken, it.at);
+    taken.add(id);
+    return { ...it, id };
+  });
+}
+
+function writeHistoryLocal(items: HistoryItem[]): void {
+  localStorage.setItem(HKEY, JSON.stringify(items));
 }
 
 function normalizeCount(value: unknown, fallback: number): number {
@@ -407,38 +465,44 @@ async function writeLifetimeCount(count: number): Promise<void> {
   }
 }
 
+/* Reading happens here; every change goes through a native `history_*` command
+   that holds one lock across read, modify and save. The Hub and the FlowBar are
+   separate webviews, so no lock on this side could keep a delete computed from
+   an old copy from overwriting a dictation the other window just added (A04). */
 export async function loadHistory(): Promise<HistoryItem[]> {
   if (!hasTauriRuntime()) return loadHistoryLocal();
   try {
     const store = await getHistoryStore();
-    const existing = await store.get<HistoryItem[]>(HISTORY_KEY);
-    if (existing != null) return existing;
-
-    // One-time, idempotent migration from the old localStorage home.
-    const legacy = loadHistoryLocal();
-    await store.set(HISTORY_KEY, legacy);
-    await store.save();
-    localStorage.removeItem(HKEY);
-    localStorage.removeItem(LEGACY_HKEY);
-    return legacy;
+    const existing = await store.get<unknown>(HISTORY_KEY);
+    const needsIds = (list: unknown[]) =>
+      list.some((it) => isUnidentifiedHistoryItem(it) && typeof it.id !== "string");
+    if (Array.isArray(existing) && !needsIds(existing)) {
+      // Malformed entries are skipped, not "repaired" by a write on every read.
+      return existing.filter(isHistoryItem);
+    }
+    // First read after upgrading: adopt the old localStorage list if the file
+    // has none, and give entries without an id one. Idempotent natively.
+    const migrated = await invoke<unknown[]>("history_migrate", {
+      legacy: existing == null ? loadUnidentifiedHistoryLocal() : [],
+    });
+    if (existing == null) {
+      localStorage.removeItem(HKEY);
+      localStorage.removeItem(LEGACY_HKEY);
+    }
+    return migrated.filter(isHistoryItem);
   } catch {
     return loadHistoryLocal();
   }
 }
 
-export async function writeHistory(items: HistoryItem[]): Promise<void> {
+/** Delete one entry by id. Throws when the change could not be saved, so the
+ *  UI can say so instead of showing a deletion that did not happen. */
+export async function deleteHistoryItem(id: string): Promise<void> {
   if (!hasTauriRuntime()) {
-    localStorage.setItem(HKEY, JSON.stringify(items));
+    writeHistoryLocal(loadHistoryLocal().filter((it) => it.id !== id));
     return;
   }
-  try {
-    const store = await getHistoryStore();
-    await store.set(HISTORY_KEY, items);
-    await store.save();
-  } catch {
-    // Storage plugin unavailable — keep the data rather than lose it.
-    localStorage.setItem(HKEY, JSON.stringify(items));
-  }
+  await invoke<boolean>("history_delete", { id });
 }
 
 export async function getLifetimeCount(): Promise<number> {
@@ -446,16 +510,34 @@ export async function getLifetimeCount(): Promise<number> {
   return readLifetimeCount(fallback);
 }
 
-/** Returns the new dictation count so callers can celebrate milestones. */
-export async function pushHistory(text: string, durationMs?: number): Promise<number> {
+/** Returns the new dictation count so callers can celebrate milestones.
+ *  `app` is the bundle id the dictation was meant for, when known.
+ *  Throws when the entry could not be saved. */
+export async function pushHistory(text: string, durationMs?: number, app?: string | null): Promise<number> {
   const items = await loadHistory();
   const lifetimeCount = (await readLifetimeCount(items.length)) + 1;
-  const sliced = [{ text, at: Date.now(), ...(durationMs ? { durationMs } : {}) }, ...items].slice(0, HISTORY_MAX);
-  await writeHistory(sliced);
+  if (hasTauriRuntime()) {
+    await invoke("history_push", {
+      text,
+      durationMs: durationMs ?? null,
+      targetApp: app ?? null,
+      limit: HISTORY_MAX,
+    });
+  } else {
+    const current = loadHistoryLocal();
+    const at = Date.now();
+    const id = mintHistoryId(new Set(current.map((it) => it.id)), at);
+    const entry: HistoryItem = { id, text, at, ...(durationMs ? { durationMs } : {}), ...(app ? { app } : {}) };
+    writeHistoryLocal([entry, ...current].slice(0, HISTORY_MAX));
+  }
   await writeLifetimeCount(lifetimeCount);
   return lifetimeCount;
 }
 
 export async function clearHistory(): Promise<void> {
-  await writeHistory([]);
+  if (!hasTauriRuntime()) {
+    writeHistoryLocal([]);
+    return;
+  }
+  await invoke("history_clear");
 }

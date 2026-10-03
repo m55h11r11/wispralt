@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
@@ -14,6 +14,7 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex as TokioMutex;
 
 const KEYCHAIN_SERVICE: &str = "com.mshrmnsr.lirrly";
@@ -29,6 +30,8 @@ struct LastTranscript(Mutex<String>);
 struct PasteLock(TokioMutex<()>);
 /// Tray paste item handle so it can be enabled after the first dictation.
 struct PasteMenuItemHandle(MenuItem<tauri::Wry>);
+/// Serializes every history mutation. See `with_history`.
+struct HistoryLock(Mutex<()>);
 
 fn keychain() -> lirrly_core::Keychain {
     lirrly_core::Keychain::new(KEYCHAIN_SERVICE)
@@ -131,11 +134,41 @@ async fn transform_text(
     lirrly_core::transform_text(api_key, text, prompt, model, language).await
 }
 
+/// The transform shortcut fires on key-down, so the user is usually still
+/// holding ⌥ when the synthetic ⌘C goes out. Held modifiers can turn it into a
+/// different command in the target app (⌥⌘C is "Copy Style" in many editors),
+/// which leaves the selection uncopied — the intermittent ⌥T failure seen on
+/// 0.4.2. Capture waits for them to lift, but only this long: someone may keep
+/// a key down on purpose, and then the copy goes ahead as before.
+const MODIFIER_RELEASE_WAIT: Duration = Duration::from_millis(700);
+/// How long the frontmost app gets to put the selection on the pasteboard.
+/// Slower (Electron/web) apps can take several hundred milliseconds.
+const SELECTION_COPY_WAIT: Duration = Duration::from_millis(1000);
+
+/// Only ⇧⌃⌥⌘ form shortcuts. Caps Lock is a toggle that can stay on for hours,
+/// and the Fn/keypad/help flags never change what ⌘C means.
+#[cfg(target_os = "macos")]
+fn holds_shortcut_modifier(flags: objc2_app_kit::NSEventModifierFlags) -> bool {
+    use objc2_app_kit::NSEventModifierFlags as Flags;
+    flags.intersects(Flags::Shift | Flags::Control | Flags::Option | Flags::Command)
+}
+
+#[cfg(target_os = "macos")]
+async fn wait_for_modifier_release() {
+    // The class method reads the live keyboard state, not the event stream,
+    // so it is current from any thread.
+    let held = || holds_shortcut_modifier(objc2_app_kit::NSEvent::modifierFlags_class());
+    let deadline = std::time::Instant::now() + MODIFIER_RELEASE_WAIT;
+    while held() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(15)).await;
+    }
+}
+
 /// Copy the current selection in the frontmost app (synthetic ⌘C) and return
 /// it, restoring the user's clipboard afterwards. A sentinel marks "nothing
 /// copied yet" so an empty selection is detected instead of returning stale
-/// clipboard content. Non-text clipboards (images, files) can't be restored —
-/// same known v1 limit as paste.
+/// clipboard content. The prior pasteboard is snapshotted with every type it
+/// declares (images, files, rich text) and put back whole — audit A18.
 #[tauri::command]
 async fn capture_selection(app: AppHandle) -> Result<String, String> {
     let state = app.state::<PasteLock>();
@@ -143,14 +176,18 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
     if !check_accessibility() {
         return Err("accessibility_not_granted".into());
     }
+    #[cfg(target_os = "macos")]
+    wait_for_modifier_release().await;
 
     use tauri_plugin_clipboard_manager::ClipboardExt;
     // Zero-width-wrapped so it stays invisible if a worst-case abort leaves it behind.
     const SENTINEL: &str = "\u{200B}lirrly-selection-sentinel\u{200B}";
-    let previous = app.clipboard().read_text().ok().filter(|t| !t.is_empty());
+    // Full-fidelity snapshot: images/files/rich text survive the round-trip (A18).
+    let previous = pasteboard::snapshot();
     app.clipboard()
         .write_text(SENTINEL.to_string())
         .map_err(|e| e.to_string())?;
+    let ours = pasteboard::change_count();
     tokio::time::sleep(Duration::from_millis(60)).await;
 
     {
@@ -169,8 +206,9 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
 
     // Apps write the pasteboard asynchronously — poll until the sentinel is replaced.
     let mut captured: Option<String> = None;
-    for _ in 0..15 {
-        tokio::time::sleep(Duration::from_millis(40)).await;
+    const POLL: Duration = Duration::from_millis(40);
+    for _ in 0..(SELECTION_COPY_WAIT.as_millis() / POLL.as_millis()) {
+        tokio::time::sleep(POLL).await;
         if let Ok(now) = app.clipboard().read_text() {
             if now != SENTINEL {
                 if !now.trim().is_empty() {
@@ -181,11 +219,13 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
         }
     }
 
-    if let Some(old) = previous {
-        let _ = app.clipboard().write_text(old);
-    } else if captured.is_none() {
-        // Nothing to restore and nothing copied — don't leave the sentinel behind.
-        let _ = app.clipboard().write_text(String::new());
+    // The captured text has been read out, so the ⌘C result is consumed —
+    // put the user's original pasteboard back, whatever its types were. On a
+    // timeout with no new write, restoring also clears the sentinel. Only when
+    // something non-text appeared (count moved but nothing was captured) does
+    // the pasteboard keep that newer content.
+    if captured.is_some() || pasteboard::change_count() == ours {
+        let _ = pasteboard::restore(&previous);
     }
     captured.ok_or_else(|| "no_selection".to_string())
 }
@@ -354,6 +394,138 @@ fn update_shortcut(app: AppHandle, action: String, accelerator: String) -> Resul
     }
 }
 
+/// Full-fidelity pasteboard snapshot/restore (audit A18). The old restore kept
+/// only nonempty plain text — an image, file or rich-text clipboard was simply
+/// destroyed by a dictation — and it wrote the old text back even when the user
+/// had copied something newer in the meantime. This preserves every item's raw
+/// data per type, and `restore` is gated on `changeCount` so a newer copy wins.
+#[cfg(target_os = "macos")]
+mod pasteboard {
+    use objc2::runtime::ProtocolObject;
+    use objc2_app_kit::{NSPasteboard, NSPasteboardItem};
+    use objc2_foundation::{NSArray, NSData, NSString};
+
+    /// Above this, restoring is skipped rather than doubling a huge clipboard
+    /// in memory; the user's copy stays lost as before, but nothing new breaks.
+    const MAX_SAVED_BYTES: usize = 8 * 1024 * 1024;
+
+    pub struct Saved {
+        items: Vec<Vec<(String, Vec<u8>)>>,
+        pub restorable: bool,
+    }
+
+    pub fn change_count() -> isize {
+        NSPasteboard::generalPasteboard().changeCount()
+    }
+
+    /// Capture every pasteboard item's data for every type it declares.
+    pub fn snapshot() -> Saved {
+        let mut items_out: Vec<Vec<(String, Vec<u8>)>> = Vec::new();
+        let mut total = 0usize;
+        let pb = NSPasteboard::generalPasteboard();
+        if let Some(items) = pb.pasteboardItems() {
+            for item in items.iter() {
+                let mut entry: Vec<(String, Vec<u8>)> = Vec::new();
+                for ty in item.types().iter() {
+                    if let Some(data) = item.dataForType(&ty) {
+                        let bytes = data.to_vec();
+                        total += bytes.len();
+                        if total > MAX_SAVED_BYTES {
+                            return Saved {
+                                items: Vec::new(),
+                                restorable: false,
+                            };
+                        }
+                        entry.push((ty.to_string(), bytes));
+                    }
+                }
+                if !entry.is_empty() {
+                    items_out.push(entry);
+                }
+            }
+        }
+        Saved {
+            items: items_out,
+            restorable: true,
+        }
+    }
+
+    /// Write the snapshot back. Callers must have checked `changeCount` first;
+    /// an empty snapshot restores an empty pasteboard.
+    pub fn restore(saved: &Saved) -> bool {
+        if !saved.restorable {
+            return false;
+        }
+        let pb = NSPasteboard::generalPasteboard();
+        pb.clearContents();
+        if saved.items.is_empty() {
+            return true;
+        }
+        let objects: Vec<_> = saved
+            .items
+            .iter()
+            .map(|entry| {
+                let item = NSPasteboardItem::new();
+                for (ty, bytes) in entry {
+                    let data = NSData::with_bytes(bytes);
+                    let ty = NSString::from_str(ty);
+                    item.setData_forType(&data, &ty);
+                }
+                ProtocolObject::from_retained(item)
+            })
+            .collect();
+        pb.writeObjects(&NSArray::from_retained_slice(&objects))
+    }
+}
+
+/// Non-macOS shim so the crate still type-checks off-platform; the app ships
+/// on macOS only.
+#[cfg(not(target_os = "macos"))]
+mod pasteboard {
+    pub struct Saved {
+        pub restorable: bool,
+    }
+    pub fn change_count() -> isize {
+        0
+    }
+    pub fn snapshot() -> Saved {
+        Saved { restorable: false }
+    }
+    pub fn restore(_saved: &Saved) -> bool {
+        false
+    }
+}
+
+/// Bundle id of the app currently receiving key events, when macOS reports one.
+/// Safe off the main thread; AppKit refreshes the value as the app's run loop spins.
+fn frontmost_bundle_id() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    return objc2_app_kit::NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .and_then(|running| running.bundleIdentifier())
+        .map(|id| id.to_string());
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+/// Where a result should land: the app in front when the user finished speaking
+/// or asked for a transform. `None` when macOS reports nothing or reports Lirrly
+/// itself (the bar was clicked) — there is then nothing meaningful to compare.
+#[tauri::command]
+fn paste_target(app: AppHandle) -> Option<String> {
+    frontmost_bundle_id().filter(|id| *id != app.config().identifier)
+}
+
+/// Whether a result meant for `expected` may be pasted with `current` in front.
+/// No expectation means no check (tray re-paste, or the target was unknown). An
+/// unknown current app counts as a change: pasting blind is what this prevents.
+fn paste_target_matches(expected: Option<&str>, current: Option<&str>) -> bool {
+    match expected {
+        None => true,
+        Some(expected) => current == Some(expected),
+    }
+}
+
 /// Put text on the clipboard, paste it into the frontmost app (Cmd+V), then
 /// restore the previous clipboard so dictation doesn't clobber a user copy.
 /// Async so the inter-keystroke waits never block the main thread.
@@ -364,13 +536,25 @@ fn update_shortcut(app: AppHandle, action: String, accelerator: String) -> Resul
 /// case returns `accessibility_not_granted_copied`: the words are safe, only
 /// the automatic insertion failed. Returning before writing the clipboard, as
 /// this did until 0.4.2, silently destroyed the dictation instead.
-async fn perform_paste(app: &AppHandle, text: String) -> Result<(), String> {
+///
+/// Transcription and transforms take seconds, and people switch apps while they
+/// wait. When `target` is given and a different app is now in front, the text is
+/// left on the clipboard the same way and `target_changed_copied` is returned —
+/// typing a transcript into the wrong window is the one outcome a user cannot
+/// easily notice or undo.
+async fn perform_paste(
+    app: &AppHandle,
+    text: String,
+    target: Option<String>,
+) -> Result<(), String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
-    // Non-text clipboard contents (images, files) can't be restored — known v1 limit.
-    let previous = app.clipboard().read_text().ok().filter(|t| !t.is_empty());
+    // Full-fidelity snapshot: an image/file/rich-text clipboard used to be
+    // destroyed by a dictation because only plain text was saved (audit A18).
+    let previous = pasteboard::snapshot();
     app.clipboard()
         .write_text(text)
         .map_err(|e| e.to_string())?;
+    let ours = pasteboard::change_count();
 
     if !check_accessibility() {
         return Err("accessibility_not_granted_copied".into());
@@ -382,6 +566,10 @@ async fn perform_paste(app: &AppHandle, text: String) -> Result<(), String> {
     // clipboard; keep it there rather than restoring the old contents over it.
     if !check_accessibility() {
         return Err("accessibility_not_granted_copied".into());
+    }
+    // Checked as late as possible, immediately before the keystroke.
+    if !paste_target_matches(target.as_deref(), frontmost_bundle_id().as_deref()) {
+        return Err("target_changed_copied".into());
     }
 
     {
@@ -400,20 +588,24 @@ async fn perform_paste(app: &AppHandle, text: String) -> Result<(), String> {
 
     // Give slow Electron targets time to consume the paste before restoring.
     tokio::time::sleep(Duration::from_millis(650)).await;
-    if let Some(old) = previous {
-        let _ = app.clipboard().write_text(old);
+    // Restore only while the transcript is still the latest write: if the user
+    // copied something newer during the wait, their copy wins (audit A18).
+    if pasteboard::change_count() == ours {
+        let _ = pasteboard::restore(&previous);
     }
     Ok(())
 }
 
+/// Tray "Paste last transcript": an explicit request to paste into whatever is
+/// in front right now, so there is no earlier target to hold it to.
 async fn perform_paste_locked(app: &AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<PasteLock>();
     let _guard = state.0.try_lock().map_err(|_| "paste_busy".to_string())?;
-    perform_paste(app, text).await
+    perform_paste(app, text, None).await
 }
 
 #[tauri::command]
-async fn paste_text(app: AppHandle, text: String) -> Result<(), String> {
+async fn paste_text(app: AppHandle, text: String, target: Option<String>) -> Result<(), String> {
     let state = app.state::<PasteLock>();
     let _guard = state.0.try_lock().map_err(|_| "paste_busy".to_string())?;
     // Remember the transcript for the tray and unlock "Paste last transcript".
@@ -423,7 +615,151 @@ async fn paste_text(app: AppHandle, text: String) -> Result<(), String> {
     if let Some(item) = app.try_state::<PasteMenuItemHandle>() {
         let _ = item.0.set_enabled(true);
     }
-    perform_paste(&app, text).await
+    perform_paste(&app, text, target).await
+}
+
+/* History lives in history.json via tauri-plugin-store. The Hub and the FlowBar
+are separate webviews, and both used to read the list, change it, and write
+the whole array back — so a delete computed from a copy loaded minutes
+earlier silently erased any dictation that had landed since (A04). A lock in
+either webview cannot order the two, so every mutation happens here instead.
+Reads stay in the webviews: the plugin hands JS and Rust the same in-memory
+store for a path, so a write here is visible to the next JS read at once. */
+const HISTORY_FILE: &str = "history.json";
+const HISTORY_KEY: &str = "items";
+/// Upper bound on the retention limit a webview may ask for.
+const HISTORY_LIMIT_MAX: usize = 10_000;
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn history_id(item: &Value) -> Option<&str> {
+    item.get("id").and_then(Value::as_str)
+}
+
+/// An id no current entry holds: the timestamp in hex plus a counter.
+/// `store.ts` mints browser-preview ids in the same shape.
+fn mint_history_id(items: &[Value], at: u64) -> String {
+    (0u32..)
+        .map(|n| format!("h{at:x}-{n}"))
+        .find(|id| !items.iter().any(|it| history_id(it) == Some(id.as_str())))
+        .unwrap_or_default()
+}
+
+/// Give entries written before ids existed one. Returns whether any changed.
+fn backfill_history_ids(items: &mut [Value]) -> bool {
+    let mut changed = false;
+    for i in 0..items.len() {
+        if !items[i].is_object() || history_id(&items[i]).is_some() {
+            continue;
+        }
+        let at = items[i]
+            .get("at")
+            .and_then(|v| v.as_u64().or_else(|| v.as_f64().map(|f| f as u64)))
+            .unwrap_or(0);
+        let id = mint_history_id(items, at);
+        items[i]["id"] = Value::String(id);
+        changed = true;
+    }
+    changed
+}
+
+fn push_history_item(items: &mut Vec<Value>, item: Value, limit: usize) {
+    items.insert(0, item);
+    items.truncate(limit.clamp(1, HISTORY_LIMIT_MAX));
+}
+
+/// Remove exactly the entry with this id. Returns whether one was removed.
+fn delete_history_item(items: &mut Vec<Value>, id: &str) -> bool {
+    let before = items.len();
+    items.retain(|it| history_id(it) != Some(id));
+    items.len() != before
+}
+
+/// Run one read-modify-write of the history list under `HistoryLock`. The
+/// closure gets the current list (empty when the file has none yet) and
+/// whether the file had one at all, and returns whether it changed the list.
+/// Only a changed list is written and saved.
+fn with_history<T>(
+    app: &AppHandle,
+    f: impl FnOnce(&mut Vec<Value>, bool) -> (bool, T),
+) -> Result<T, String> {
+    let lock = app.state::<HistoryLock>();
+    let _guard = lock.0.lock().map_err(|_| "state_poisoned".to_string())?;
+    let store = app.store(HISTORY_FILE).map_err(|e| e.to_string())?;
+    let existing = store.get(HISTORY_KEY);
+    let present = existing.is_some();
+    let mut items = match existing {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    };
+    let (changed, out) = f(&mut items, present);
+    if changed {
+        store.set(HISTORY_KEY, Value::Array(items));
+        store.save().map_err(|e| e.to_string())?;
+    }
+    Ok(out)
+}
+
+/// Record a finished dictation at the top of history and return the stored entry.
+#[tauri::command]
+fn history_push(
+    app: AppHandle,
+    text: String,
+    duration_ms: Option<f64>,
+    target_app: Option<String>,
+    limit: usize,
+) -> Result<Value, String> {
+    let at = now_ms();
+    with_history(&app, |items, _| {
+        backfill_history_ids(items);
+        let mut item = json!({ "id": mint_history_id(items, at), "text": text, "at": at });
+        if let Some(ms) = duration_ms.filter(|ms| ms.is_finite() && *ms > 0.0) {
+            item["durationMs"] = json!(ms.round() as u64);
+        }
+        if let Some(bundle) = target_app.filter(|b| !b.is_empty()) {
+            item["app"] = json!(bundle);
+        }
+        push_history_item(items, item.clone(), limit);
+        (true, item)
+    })
+}
+
+/// Delete one entry by id — never by position or by a list the webview holds.
+#[tauri::command]
+fn history_delete(app: AppHandle, id: String) -> Result<bool, String> {
+    with_history(&app, |items, _| {
+        let removed = delete_history_item(items, &id);
+        (removed, removed)
+    })
+}
+
+#[tauri::command]
+fn history_clear(app: AppHandle) -> Result<(), String> {
+    with_history(&app, |items, _| {
+        let changed = !items.is_empty();
+        items.clear();
+        (changed, ())
+    })
+}
+
+/// First read after an upgrade: adopt the pre-store localStorage list when the
+/// file has none yet, and give every entry a stable id. Idempotent, so both
+/// webviews may race here and the second call changes nothing.
+#[tauri::command]
+fn history_migrate(app: AppHandle, legacy: Vec<Value>) -> Result<Vec<Value>, String> {
+    with_history(&app, |items, present| {
+        let adopted = !present;
+        if adopted {
+            *items = legacy.into_iter().filter(Value::is_object).collect();
+        }
+        let backfilled = backfill_history_ids(items);
+        (adopted || backfilled, items.clone())
+    })
 }
 
 fn position_flowbar(win: &WebviewWindow) {
@@ -441,6 +777,17 @@ fn position_flowbar(win: &WebviewWindow) {
         let y = pos.y + m.height as i32 - size.height as i32 - (bottom_margin * scale) as i32;
         let _ = win.set_position(PhysicalPosition::new(x, y));
     }
+}
+
+/// Menu-bar recording dot (audit A21): with the bar allowed to hide, the tray
+/// is the one place that can always say a microphone is open.
+#[tauri::command]
+fn set_tray_recording(app: AppHandle, recording: bool) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main") {
+        let title = if recording { Some("●") } else { None };
+        tray.set_title(title).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -516,14 +863,17 @@ pub fn run() {
         ]))))
         .manage(LastTranscript(Mutex::new(String::new())))
         .manage(PasteLock(TokioMutex::new(())))
+        .manage(HistoryLock(Mutex::new(())))
         .invoke_handler(tauri::generate_handler![
             transcribe,
             cleanup_text,
             transform_text,
             capture_selection,
+            paste_target,
             report_event,
             send_feedback,
             paste_text,
+            set_tray_recording,
             show_flowbar,
             hide_flowbar,
             resize_flowbar,
@@ -533,7 +883,11 @@ pub fn run() {
             check_accessibility,
             request_accessibility,
             open_privacy_pane,
-            update_shortcut
+            update_shortcut,
+            history_push,
+            history_delete,
+            history_clear,
+            history_migrate
         ])
         .on_window_event(|window, event| {
             // Closing the Hub should hide it, not quit — Lirrly lives in the menu bar.
@@ -633,7 +987,7 @@ pub fn run() {
             )?;
             app.manage(PasteMenuItemHandle(paste_i.clone()));
             let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-icon-32.png"))?;
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
                 // Dedicated black alpha-mask glyph for macOS template tinting.
                 .icon_as_template(true)
@@ -641,10 +995,11 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "home" => show_main_section(app, Some("home")),
                     "shortcuts" => show_main_section(app, Some("shortcuts")),
+                    // The in-app updater, not the releases page (audit A36): a
+                    // DMG installed by hand skips the signature-checked path.
                     "check_updates" => {
-                        let _ = app
-                            .opener()
-                            .open_url(format!("{REPO_URL}/releases"), None::<&str>);
+                        show_main_section(app, Some("account"));
+                        let _ = app.emit("check-for-updates", ());
                     }
                     "help" | "support" | "feedback" => {
                         let _ = app
@@ -684,10 +1039,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{privacy_pane_url, shortcut_event_for_action};
+    use super::{
+        backfill_history_ids, delete_history_item, history_id, mint_history_id,
+        paste_target_matches, privacy_pane_url, push_history_item, shortcut_event_for_action,
+    };
     use lirrly_core::groq::{
         normalize_audio_mime, transform_system_prompt, upload_extension_for_mime,
     };
+    use serde_json::{json, Value};
 
     #[test]
     fn strips_codec_params_from_audio_mime() {
@@ -735,5 +1094,118 @@ mod tests {
         assert!(transform_system_prompt(Some("ar")).contains("Modern Standard Arabic"));
         assert!(!transform_system_prompt(Some("en")).contains("Modern Standard Arabic"));
         assert!(!transform_system_prompt(None).contains("Modern Standard Arabic"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_shortcut_modifiers_hold_up_the_selection_copy() {
+        use objc2_app_kit::NSEventModifierFlags as Flags;
+        let held = super::holds_shortcut_modifier;
+        // ⌥ still down from ⌥T is the case this exists for.
+        assert!(held(Flags::Option));
+        assert!(held(Flags::Command | Flags::Shift));
+        assert!(held(Flags::Control | Flags::CapsLock));
+        // Caps Lock can be on indefinitely; waiting on it would stall every ⌥T.
+        assert!(!held(Flags::CapsLock));
+        assert!(!held(Flags::Function | Flags::NumericPad | Flags::Help));
+        assert!(!held(Flags::empty()));
+    }
+
+    #[test]
+    fn pastes_only_into_the_app_the_result_was_meant_for() {
+        let slack = Some("com.tinyspeck.slackmacgap");
+        let chrome = Some("com.google.Chrome");
+        assert!(paste_target_matches(slack, slack));
+        assert!(
+            !paste_target_matches(slack, chrome),
+            "switched apps while waiting"
+        );
+        assert!(
+            !paste_target_matches(slack, None),
+            "unknown front app is not a match"
+        );
+        assert!(
+            paste_target_matches(None, chrome),
+            "no recorded target, no check"
+        );
+    }
+
+    fn ids(items: &[Value]) -> Vec<&str> {
+        items.iter().filter_map(history_id).collect()
+    }
+
+    #[test]
+    fn minted_ids_never_collide_within_the_same_millisecond() {
+        let mut items = Vec::new();
+        for text in ["one", "two", "three"] {
+            let id = mint_history_id(&items, 1_700_000_000_000);
+            push_history_item(&mut items, json!({ "id": id, "text": text }), 200);
+        }
+        let mut seen = ids(&items);
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), 3);
+    }
+
+    #[test]
+    fn backfill_gives_legacy_entries_distinct_ids_and_keeps_existing_ones() {
+        let mut items = vec![
+            json!({ "text": "same moment", "at": 5 }),
+            json!({ "text": "same moment", "at": 5 }),
+            json!({ "id": "kept", "text": "already had one", "at": 4 }),
+        ];
+        assert!(backfill_history_ids(&mut items));
+        assert_eq!(ids(&items).len(), 3);
+        assert_ne!(history_id(&items[0]), history_id(&items[1]));
+        assert_eq!(history_id(&items[2]), Some("kept"));
+        assert!(!backfill_history_ids(&mut items), "second pass is a no-op");
+    }
+
+    #[test]
+    fn delete_removes_only_the_named_entry_even_with_identical_text_and_time() {
+        // The old webview delete matched on `at` + `text`, so twins died together.
+        let mut items = vec![
+            json!({ "id": "a", "text": "twin", "at": 1 }),
+            json!({ "id": "b", "text": "twin", "at": 1 }),
+        ];
+        assert!(delete_history_item(&mut items, "a"));
+        assert_eq!(ids(&items), vec!["b"]);
+        assert!(
+            !delete_history_item(&mut items, "a"),
+            "deleting twice is harmless"
+        );
+    }
+
+    #[test]
+    fn a_dictation_pushed_after_a_view_loaded_survives_a_delete_from_that_view() {
+        // A04 as it happened: History loaded [old1, old2], a dictation landed,
+        // then the user deleted old1. Deleting by id against the current list
+        // must keep the new entry.
+        let mut items = vec![
+            json!({ "id": "old1", "text": "first", "at": 1 }),
+            json!({ "id": "old2", "text": "second", "at": 2 }),
+        ];
+        push_history_item(
+            &mut items,
+            json!({ "id": "new", "text": "just now", "at": 3 }),
+            200,
+        );
+        delete_history_item(&mut items, "old1");
+        assert_eq!(ids(&items), vec!["new", "old2"]);
+    }
+
+    #[test]
+    fn push_keeps_newest_first_and_honours_the_limit() {
+        let mut items = Vec::new();
+        for n in 0..5 {
+            push_history_item(&mut items, json!({ "id": n.to_string() }), 3);
+        }
+        assert_eq!(ids(&items), vec!["4", "3", "2"]);
+        push_history_item(&mut items, json!({ "id": "x" }), 0);
+        assert_eq!(
+            items.len(),
+            1,
+            "a zero limit still keeps the entry just written"
+        );
     }
 }

@@ -16,6 +16,19 @@ const DEFAULT_CHAT_MODEL: &str = "qwen/qwen3.8-27b";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Groq's transcription endpoint rejects files over 25 MB.
 const GROQ_MAX_BYTES: usize = 25 * 1024 * 1024;
+/// Output-token budgets for the chat layers. The floors are the old fixed caps;
+/// the ceiling stays conservative because a request above a model's completion
+/// limit is rejected outright, which is worse than the truncation it prevents.
+const CLEANUP_MIN_TOKENS: u32 = 900;
+const TRANSFORM_MIN_TOKENS: u32 = 1200;
+const MAX_OUTPUT_TOKENS: u32 = 8192;
+/// Longest `retry-after` a rate-limited chat call waits out before its one
+/// retry. Free-tier keys hit per-minute token limits on back-to-back transforms
+/// (Groq counts each request's `max_tokens`); a wait of a few seconds is better
+/// than a failure the user must redo by hand. Anything longer fails at once.
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(10);
+/// Floor for the wait, so a `retry-after: 0` cannot turn into an instant re-hit.
+const MIN_RETRY_AFTER: Duration = Duration::from_millis(500);
 
 /// Strip codec params ("audio/webm;codecs=opus") — Groq rejects them in Content-Type.
 pub fn normalize_audio_mime(mime: &str) -> String {
@@ -176,7 +189,7 @@ pub async fn cleanup_text(
         cleanup_model,
         system,
         user,
-        900,
+        cleanup_token_budget(&text),
         "Groq cleanup API",
     )
     .await?;
@@ -225,7 +238,15 @@ pub async fn transform_text(
 
     let system = transform_system_prompt(language.as_deref());
     let user = format!("Transform instruction: {prompt}\n\nText:\n{text}");
-    let out = groq_chat(api_key, model, system, user, 1200, "Groq transform API").await?;
+    let out = groq_chat(
+        api_key,
+        model,
+        system,
+        user,
+        transform_token_budget(&text),
+        "Groq transform API",
+    )
+    .await?;
 
     if out.is_empty() {
         Err("empty_transform".into())
@@ -254,23 +275,96 @@ pub async fn groq_chat(
         "max_tokens": max_tokens
     });
 
-    let resp = client()?
-        .post(CHAT_URL)
-        .bearer_auth(api_key)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let client = client()?;
+    let mut retried = false;
+    loop {
+        let resp = client
+            .post(CHAT_URL)
+            .bearer_auth(&api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let status = resp.status();
-    let body = resp.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() {
-        return Err(format!("{error_label} {status}: {body}"));
+        let status = resp.status();
+        if !retried {
+            let retry_after = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok());
+            if let Some(wait) = rate_limit_wait(status.as_u16(), retry_after) {
+                retried = true;
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+        }
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(format!("{error_label} {status}: {body}"));
+        }
+        return parse_chat_completion(&body);
     }
+}
 
-    let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    Ok(v.get("choices")
-        .and_then(|c| c.get(0))
+/// How long to wait before retrying a rate-limited call, or `None` when it
+/// should fail now. Only a 429 that says when to come back (`retry-after`, in
+/// seconds — Groq sends whole seconds; a fraction is accepted) within
+/// `MAX_RETRY_AFTER` is worth waiting for. A 429 without the header is a quota
+/// that will not clear in seconds, and an HTTP-date form is not used by Groq.
+pub fn rate_limit_wait(status: u16, retry_after: Option<&str>) -> Option<Duration> {
+    if status != 429 {
+        return None;
+    }
+    let secs: f64 = retry_after?.trim().parse().ok()?;
+    // Range-check before converting: `Duration::from_secs_f64` panics on NaN,
+    // negatives and values too large to represent.
+    if !(0.0..=MAX_RETRY_AFTER.as_secs_f64()).contains(&secs) {
+        return None;
+    }
+    Some(Duration::from_secs_f64(secs).max(MIN_RETRY_AFTER))
+}
+
+/// A cleanup rewrite is roughly as long as its input. Every byte-level BPE token
+/// covers at least one UTF-8 byte, so the input's byte length bounds its token
+/// count from above — a budget sized from it cannot cut off a faithful rewrite
+/// of a long dictation the way the old fixed 900 did (Arabic especially, where
+/// a few minutes of speech outgrew it).
+pub fn cleanup_token_budget(text: &str) -> u32 {
+    u32::try_from(text.len())
+        .unwrap_or(u32::MAX)
+        .saturating_add(256)
+        .clamp(CLEANUP_MIN_TOKENS, MAX_OUTPUT_TOKENS)
+}
+
+/// A transform may legitimately expand its input ("turn this into an email"),
+/// so it gets twice the byte bound plus room for the added structure.
+pub fn transform_token_budget(text: &str) -> u32 {
+    u32::try_from(text.len())
+        .unwrap_or(u32::MAX)
+        .saturating_mul(2)
+        .saturating_add(1024)
+        .clamp(TRANSFORM_MIN_TOKENS, MAX_OUTPUT_TOKENS)
+}
+
+/// Pull the assistant text out of a chat-completions response body.
+///
+/// `finish_reason: "length"` means the model stopped at `max_tokens` mid-answer.
+/// The content is then a plausible-looking prefix of the real output, and
+/// returning it would silently drop the rest of the user's words — so it is an
+/// error (`output_truncated`), never a result. Callers already recover from
+/// errors without loss: dictation keeps the full un-polished transcript, and a
+/// failed transform leaves the selection untouched.
+pub fn parse_chat_completion(body: &str) -> Result<String, String> {
+    let v: serde_json::Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    let choice = v.get("choices").and_then(|c| c.get(0));
+    if choice
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(|r| r.as_str())
+        == Some("length")
+    {
+        return Err("output_truncated".into());
+    }
+    Ok(choice
         .and_then(|c| c.get("message"))
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_str())
@@ -305,5 +399,93 @@ mod tests {
         assert!(!cleanup_system_prompt("en").contains("dialect"));
         assert!(transform_system_prompt(Some("ar")).contains("preserve the speaker's dialect"));
         assert!(!transform_system_prompt(Some("en")).contains("Modern Standard Arabic"));
+    }
+
+    fn completion(content: &str, finish_reason: &str) -> String {
+        json!({
+            "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": content },
+                "finish_reason": finish_reason
+            }]
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn returns_content_when_the_model_finished() {
+        let body = completion("  \"Hello there.\"  ", "stop");
+        assert_eq!(parse_chat_completion(&body).unwrap(), "Hello there.");
+    }
+
+    #[test]
+    fn a_length_stop_is_an_error_not_a_shorter_answer() {
+        let body = completion("The first half of what you actually sa", "length");
+        assert_eq!(
+            parse_chat_completion(&body).unwrap_err(),
+            "output_truncated"
+        );
+    }
+
+    #[test]
+    fn missing_choices_still_parse_as_empty_for_the_empty_output_errors() {
+        assert_eq!(parse_chat_completion("{}").unwrap(), "");
+        assert!(parse_chat_completion("not json").is_err());
+    }
+
+    #[test]
+    fn short_inputs_keep_the_previous_floors() {
+        assert_eq!(cleanup_token_budget("hello"), CLEANUP_MIN_TOKENS);
+        assert_eq!(transform_token_budget("hello"), TRANSFORM_MIN_TOKENS);
+    }
+
+    #[test]
+    fn long_arabic_dictation_gets_a_budget_above_its_own_size() {
+        // ~3 minutes of Arabic speech: two bytes per letter in UTF-8 put this
+        // well past the old fixed cap of 900 tokens.
+        let dictation = "والله يا اخوي الموضوع هذا يبي له جلسة طويلة ونتفاهم فيه زين ".repeat(40);
+        assert!(dictation.len() > 900 * 2);
+        let cleanup = cleanup_token_budget(&dictation);
+        let transform = transform_token_budget(&dictation);
+        assert!(cleanup as usize >= dictation.len().min(MAX_OUTPUT_TOKENS as usize));
+        assert!(transform >= cleanup);
+    }
+
+    #[test]
+    fn a_short_rate_limit_is_waited_out_once() {
+        assert_eq!(
+            rate_limit_wait(429, Some("2")),
+            Some(Duration::from_secs(2))
+        );
+        assert_eq!(
+            rate_limit_wait(429, Some(" 1.5 ")),
+            Some(Duration::from_millis(1500))
+        );
+        // A zero wait still pauses briefly instead of re-hitting the limit.
+        assert_eq!(rate_limit_wait(429, Some("0")), Some(MIN_RETRY_AFTER));
+        assert_eq!(rate_limit_wait(429, Some("10")), Some(MAX_RETRY_AFTER));
+    }
+
+    #[test]
+    fn other_failures_and_long_waits_fail_at_once() {
+        assert_eq!(rate_limit_wait(500, Some("2")), None);
+        assert_eq!(rate_limit_wait(200, Some("2")), None);
+        assert_eq!(rate_limit_wait(429, None), None);
+        assert_eq!(rate_limit_wait(429, Some("11")), None);
+        assert_eq!(rate_limit_wait(429, Some("-1")), None);
+        assert_eq!(rate_limit_wait(429, Some("NaN")), None);
+        assert_eq!(rate_limit_wait(429, Some("inf")), None);
+        assert_eq!(rate_limit_wait(429, Some("1e300")), None);
+        assert_eq!(
+            rate_limit_wait(429, Some("Wed, 21 Oct 2026 07:28:00 GMT")),
+            None
+        );
+    }
+
+    #[test]
+    fn budgets_never_exceed_the_ceiling() {
+        let huge = "a".repeat(10 * 1024 * 1024);
+        assert_eq!(cleanup_token_budget(&huge), MAX_OUTPUT_TOKENS);
+        assert_eq!(transform_token_budget(&huge), MAX_OUTPUT_TOKENS);
     }
 }
