@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { hasTauriRuntime, loadSettings } from "../lib/store";
-import { WaveMark } from "../settings/Logo";
+import { LogoMark } from "../settings/Logo";
 import "./onboarding.css";
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -38,9 +38,9 @@ function Welcome({ onNext, onSkip }: { onNext: () => void; onSkip: () => void })
   return (
     <div className="ob-step ob-center">
       <div className="ob-mark">
-        <WaveMark />
+        <LogoMark size={56} />
       </div>
-      <h1 className="ob-title">Lirrly</h1>
+      <h1 className="ob-title">Lirrly Pro</h1>
       <p className="ob-lede">
         Speak. Your words, clean and pasted.
         <br />

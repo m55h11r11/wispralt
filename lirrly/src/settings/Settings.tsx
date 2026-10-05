@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkForUpdate, installUpdate, pendingRestartVersion, restartApp } from "../lib/updater";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
+import {
+  checkForUpdate,
+  installInFlight,
+  installUpdate,
+  joinInstall,
+  pendingRestartVersion,
+  restartApp,
+  stopInstallProgress,
+} from "../lib/updater";
 import {
   DEFAULTS,
   hasTauriRuntime,
@@ -32,9 +45,16 @@ import {
   DEFAULT_DICTATION_ACCELERATOR,
   DEFAULT_TRANSFORM_ACCELERATOR,
 } from "../lib/shortcuts";
+import {
+  clearShortcutConflict,
+  onShortcutConflictsChange,
+  readShortcutConflicts,
+  writeShortcutConflicts,
+  type ShortcutAction,
+} from "../lib/shortcutConflicts";
 import OnboardingWizard from "../onboarding/OnboardingWizard";
 import { Icon, type IconName } from "./Icon";
-import { WaveMark } from "./Logo";
+import { LogoMark } from "./Logo";
 import "./Settings.css";
 
 const ONBOARDED_KEY = "lirrly.onboarded";
@@ -226,18 +246,36 @@ export default function Settings() {
     };
   }, []);
 
-  // Re-apply the user's saved shortcuts to the Rust global registry.
-  // A failure here is non-fatal: the default registrations stay active.
+  // Re-apply the user's saved shortcuts to the Rust global registry — the
+  // defaults too (A38): one that another app held at launch was never
+  // registered, so this retries it, and a binding that still fails is
+  // recorded for the Shortcuts panel and announced once, instead of the hotkey
+  // silently doing nothing all session.
   useEffect(() => {
     if (!hasTauriRuntime()) return;
-    const acc = symbolsToAccelerator(s.shortcuts.dictation);
-    if (acc && acc !== DEFAULT_DICTATION_ACCELERATOR) {
-      void invoke("update_shortcut", { action: "dictation", accelerator: acc }).catch(() => {});
-    }
-    const accT = symbolsToAccelerator(s.shortcuts.transform);
-    if (accT && accT !== DEFAULT_TRANSFORM_ACCELERATOR) {
-      void invoke("update_shortcut", { action: "transform", accelerator: accT }).catch(() => {});
-    }
+    void (async () => {
+      const failed: ShortcutAction[] = [];
+      for (const action of ["dictation", "transform"] as const) {
+        const accelerator =
+          symbolsToAccelerator(s.shortcuts[action]) ??
+          (action === "dictation" ? DEFAULT_DICTATION_ACCELERATOR : DEFAULT_TRANSFORM_ACCELERATOR);
+        try {
+          await invoke("update_shortcut", { action, accelerator });
+        } catch {
+          failed.push(action);
+        }
+      }
+      writeShortcutConflicts(failed);
+      if (failed.length && s.notifications.errors) {
+        try {
+          let granted = await isPermissionGranted();
+          if (!granted) granted = (await requestPermission()) === "granted";
+          if (granted) sendNotification({ title: "Lirrly", body: shortcutConflictMessage(failed, s) });
+        } catch {
+          /* notification stack unavailable — the Shortcuts panel still says it */
+        }
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -275,9 +313,9 @@ export default function Settings() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <WaveMark />
+          <LogoMark />
           <span className="name">Lirrly</span>
-          <span className="plan-pill">Free · local</span>
+          <span className="plan-pill">Pro</span>
         </div>
         {TOP_NAV.map(navBtn)}
         <div className="nav-spacer" />
@@ -1372,9 +1410,23 @@ const SHORTCUT_ACTIONS: { key: string; label: string; implemented: boolean }[] =
 // Single source of truth — the store's defaults drive Reset too.
 const DEFAULT_SHORTCUTS = DEFAULTS.shortcuts;
 
+/** Which saved shortcut another app is holding, in words (A38). */
+function shortcutConflictMessage(actions: readonly ShortcutAction[], s: AppSettings): string {
+  if (!actions.length) return "";
+  const keys = actions.map((a) => (s.shortcuts[a] ?? []).join("") || a).join(" and ");
+  const names = actions.map((a) => (a === "dictation" ? "dictation" : "transform")).join(" and ");
+  const verb = actions.length > 1 ? "are" : "is";
+  return `${keys} ${verb} being used by another app, so the ${names} shortcut isn't working. Click it below and press a new combination.`;
+}
+
 function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
   const [recording, setRecording] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // Shortcuts another app held at launch (A38), kept apart from `error` so
+  // fixing one binding leaves the other's warning up until it is fixed too.
+  const [conflicts, setConflicts] = useState(readShortcutConflicts);
+  useEffect(() => onShortcutConflictsChange(() => setConflicts(readShortcutConflicts())), []);
+  const conflictMessage = shortcutConflictMessage(conflicts, s);
   const sRef = useRef(s);
   useEffect(() => {
     sRef.current = s;
@@ -1405,6 +1457,7 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
       setError("That combination isn't available — kept the previous shortcut.");
       return;
     }
+    if (action === "dictation" || action === "transform") clearShortcutConflict(action);
     update({ shortcuts: { ...sRef.current.shortcuts, [action]: combo } });
   }
 
@@ -1418,6 +1471,7 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
     for (const action of ["dictation", "transform"] as const) {
       if (await tryBind(action, DEFAULT_SHORTCUTS[action])) {
         next[action] = DEFAULT_SHORTCUTS[action];
+        clearShortcutConflict(action);
       } else {
         kept.push(SHORTCUT_ACTIONS.find((a) => a.key === action)?.label ?? action);
       }
@@ -1459,13 +1513,15 @@ function ShortcutsPanel({ s, update }: { s: AppSettings; update: Update }) {
     <>
       <h1>Shortcuts</h1>
       <p className="sub">Click a shortcut, then press the keys you want.</p>
-      {error && (
+      {(error || conflictMessage) && (
         <div className="card" style={{ borderColor: "var(--danger)" }}>
-          <div className="row">
-            <div className="meta">
-              <label style={{ color: "var(--danger)" }}>{error}</label>
+          {[error, conflictMessage].filter(Boolean).map((message) => (
+            <div className="row" key={message}>
+              <div className="meta">
+                <label style={{ color: "var(--danger)" }}>{message}</label>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
       <div className="card">
@@ -1903,19 +1959,50 @@ let handledUpdateCheckRequest = 0;
 function UpdateCard({ version, checkRequest }: { version: string; checkRequest: number }) {
   // An update installed earlier in this run is still waiting for its restart
   // (A36): reopening the Hub must offer Restart, not the same install again.
-  const [state, setState] = useState<UpdateState>(() =>
-    pendingRestartVersion() ? { kind: "installed" } : { kind: "idle" }
-  );
+  // One still downloading (A39) shows its progress instead of "Update now".
+  const [state, setState] = useState<UpdateState>(() => {
+    if (pendingRestartVersion()) return { kind: "installed" };
+    const running = installInFlight();
+    return running ? { kind: "downloading", percent: running.percent } : { kind: "idle" };
+  });
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
+  // Progress from the shared install reaches this card only while it is
+  // mounted; the install itself carries on without it (A39).
+  const mounted = useRef(false);
+  const onProgress = useCallback((percent: number | null) => {
+    if (mounted.current) setState({ kind: "downloading", percent });
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      stopInstallProgress(onProgress);
+    };
+  }, [onProgress]);
+
+  // Reattach to an install that outlived the card's previous mount. If it
+  // ended between the first render and now, show how it ended — never start
+  // a second download from here.
+  useEffect(() => {
+    if (stateRef.current.kind !== "downloading") return;
+    const joined = joinInstall(onProgress);
+    if (joined) void follow(joined);
+    else
+      void Promise.resolve().then(() => {
+        if (mounted.current) setState(pendingRestartVersion() ? { kind: "installed" } : { kind: "idle" });
+      });
+  }, [onProgress]);
+
   // One quiet check when the Hub opens. It never downloads on its own —
   // finding an update only changes the label on the button. Skipped when a
   // restart is pending or the tray just asked for a visible check instead.
   useEffect(() => {
-    if (stateRef.current.kind === "installed" || checkRequest > handledUpdateCheckRequest) return;
+    const kind = stateRef.current.kind;
+    if (kind === "installed" || kind === "downloading" || checkRequest > handledUpdateCheckRequest) return;
     void checkForUpdate()
       .then((found) => {
         if (found && stateRef.current.kind === "idle") {
@@ -1948,14 +2035,18 @@ function UpdateCard({ version, checkRequest }: { version: string; checkRequest: 
     }
   }
 
+  async function follow(running: Promise<void>) {
+    try {
+      await running;
+      if (mounted.current) setState({ kind: "installed" });
+    } catch (err) {
+      if (mounted.current) setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   async function install() {
     setState({ kind: "downloading", percent: 0 });
-    try {
-      await installUpdate((percent) => setState({ kind: "downloading", percent }));
-      setState({ kind: "installed" });
-    } catch (err) {
-      setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
-    }
+    await follow(installUpdate(onProgress));
   }
 
   const busy = state.kind === "checking" || state.kind === "downloading";
@@ -1978,7 +2069,7 @@ function UpdateCard({ version, checkRequest }: { version: string; checkRequest: 
         <div className="meta">
           <label>Version</label>
           <p>
-            Lirrly {version || "—"}
+            Lirrly Pro {version || "—"}
             {state.kind === "available" && ` · ${state.version} available`}
             {state.kind === "current" && " · up to date"}
             {state.kind === "installed" && " · restart to finish — dictation waits until you do"}
@@ -2024,9 +2115,15 @@ function InstallIdRow() {
         style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}
         title="Copy install ID"
         onClick={() => {
-          void navigator.clipboard?.writeText(id).catch(() => {});
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
+          // Say "Copied" only when it was (A48): a blocked clipboard would
+          // otherwise send the user off to paste an ID they don't have.
+          void navigator.clipboard
+            ?.writeText(id)
+            .then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => {});
         }}
       >
         {copied ? "Copied" : id}

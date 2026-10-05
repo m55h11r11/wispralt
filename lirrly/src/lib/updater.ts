@@ -75,31 +75,90 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   return found ? { version: found.version, notes: found.body ?? null } : null;
 }
 
+type ProgressListener = (percent: number | null) => void;
+
+type RunningInstall = {
+  promise: Promise<void>;
+  percent: number | null;
+  listeners: Set<ProgressListener>;
+};
+
 /**
- * Downloads and installs the update found by `checkForUpdate`.
- * `onProgress` gets 0-100, or null when the server sends no content length.
+ * The install that is running right now, shared by every caller (audit A39).
+ * The update card lives in the Hub and forgets its state when it unmounts, so
+ * leaving Account and coming back mid-download used to offer "Update now"
+ * again — and a second `downloadAndInstall` would race the first over the
+ * same bundle swap. Now a second request joins the running one.
  */
-export async function installUpdate(
-  onProgress?: (percent: number | null) => void
-): Promise<void> {
-  if (!pending) throw new Error("No update available to install.");
+let running: RunningInstall | null = null;
+
+/** The running install's last reported progress, or null when none is running. */
+export function installInFlight(): { percent: number | null } | null {
+  return running ? { percent: running.percent } : null;
+}
+
+/**
+ * Follows the install that is already running, without ever starting one —
+ * for a card remounting mid-download. Null when nothing is running any more
+ * (it may have finished in the meantime: see `pendingRestartVersion`).
+ */
+export function joinInstall(onProgress?: ProgressListener): Promise<void> | null {
+  if (!running) return null;
+  if (onProgress) {
+    running.listeners.add(onProgress);
+    onProgress(running.percent);
+  }
+  return running.promise;
+}
+
+/** Stops sending progress to `onProgress` (the card that passed it unmounted). */
+export function stopInstallProgress(onProgress: ProgressListener): void {
+  running?.listeners.delete(onProgress);
+}
+
+/**
+ * Downloads and installs the update found by `checkForUpdate`, or joins the
+ * install that is already running. `onProgress` gets 0-100, or null when the
+ * server sends no content length.
+ */
+export function installUpdate(onProgress?: ProgressListener): Promise<void> {
+  const joined = joinInstall(onProgress);
+  if (joined) return joined;
+  if (!pending) return Promise.reject(new Error("No update available to install."));
   const update = pending;
-  let total = 0;
-  let received = 0;
-  await update.downloadAndInstall((event) => {
-    if (event.event === "Started") {
-      total = event.data.contentLength ?? 0;
-      onProgress?.(total ? 0 : null);
-    } else if (event.event === "Progress") {
-      received += event.data.chunkLength;
-      onProgress?.(total ? Math.min(100, Math.round((received / total) * 100)) : null);
-    } else if (event.event === "Finished") {
-      onProgress?.(100);
+  const current: RunningInstall = {
+    promise: Promise.resolve(),
+    percent: 0,
+    listeners: new Set<ProgressListener>(onProgress ? [onProgress] : []),
+  };
+  const report = (percent: number | null) => {
+    current.percent = percent;
+    for (const listener of current.listeners) listener(percent);
+  };
+  current.promise = (async () => {
+    try {
+      let total = 0;
+      let received = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") {
+          total = event.data.contentLength ?? 0;
+          report(total ? 0 : null);
+        } else if (event.event === "Progress") {
+          received += event.data.chunkLength;
+          report(total ? Math.min(100, Math.round((received / total) * 100)) : null);
+        } else if (event.event === "Finished") {
+          report(100);
+        }
+      });
+      // Only after the bundle on disk has been replaced: a failed install leaves
+      // the running app intact, with nothing to restart for.
+      markUpdateInstalled(update.version);
+    } finally {
+      running = null;
     }
-  });
-  // Only after the bundle on disk has been replaced: a failed install leaves
-  // the running app intact, with nothing to restart for.
-  markUpdateInstalled(update.version);
+  })();
+  running = current;
+  return current.promise;
 }
 
 /** Relaunch into the freshly installed version. */

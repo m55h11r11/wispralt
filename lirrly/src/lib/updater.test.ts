@@ -6,9 +6,12 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
 import {
   RESTART_PENDING_KEY,
   checkForUpdate,
+  installInFlight,
   installUpdate,
+  joinInstall,
   markUpdateInstalled,
   pendingRestartVersion,
+  stopInstallProgress,
 } from "./updater";
 
 const tauriWindow = window as unknown as Record<string, unknown>;
@@ -95,5 +98,84 @@ describe("installUpdate", () => {
     await checkForUpdate();
     await expect(installUpdate()).rejects.toThrow("signature mismatch");
     expect(pendingRestartVersion(0)).toBeNull();
+    expect(installInFlight()).toBeNull();
+  });
+
+  it("joins a running install instead of starting a second one (A39)", async () => {
+    let finish: (() => void) | undefined;
+    let progress: ((event: unknown) => void) | undefined;
+    const downloadAndInstall = vi.fn(
+      (onEvent: (event: unknown) => void) =>
+        new Promise<void>((resolve) => {
+          progress = onEvent;
+          finish = () => resolve();
+        })
+    );
+    checkMock.mockResolvedValue({ version: "0.4.4", body: null, downloadAndInstall });
+    await checkForUpdate();
+
+    const first = installUpdate();
+    progress?.({ event: "Started", data: { contentLength: 200 } });
+    progress?.({ event: "Progress", data: { chunkLength: 50 } });
+    expect(installInFlight()).toEqual({ percent: 25 });
+
+    // A remounted update card asks again mid-download: it must join, not restart.
+    const seen: (number | null)[] = [];
+    const second = installUpdate((p) => seen.push(p));
+    expect(seen).toEqual([25]);
+    // The quiet check of a remounted card may find the same update again.
+    await checkForUpdate();
+    expect(installUpdate()).toBe(first);
+
+    progress?.({ event: "Progress", data: { chunkLength: 150 } });
+    finish?.();
+    await Promise.all([first, second]);
+    expect(downloadAndInstall).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([25, 100]);
+    expect(installInFlight()).toBeNull();
+    expect(pendingRestartVersion(0)).toBe("0.4.4");
+  });
+
+  it("a remounted card only follows a running install, and can stop listening (A39)", async () => {
+    let finish: (() => void) | undefined;
+    let progress: ((event: unknown) => void) | undefined;
+    const downloadAndInstall = vi.fn(
+      (onEvent: (event: unknown) => void) =>
+        new Promise<void>((resolve) => {
+          progress = onEvent;
+          finish = () => resolve();
+        })
+    );
+    checkMock.mockResolvedValue({ version: "0.4.4", body: null, downloadAndInstall });
+    await checkForUpdate();
+
+    // Nothing running yet: joining never starts a download of the pending update.
+    expect(joinInstall(() => undefined)).toBeNull();
+    expect(downloadAndInstall).not.toHaveBeenCalled();
+
+    const first = installUpdate();
+    progress?.({ event: "Started", data: { contentLength: 100 } });
+    const seen: (number | null)[] = [];
+    const listener = (p: number | null) => seen.push(p);
+    expect(joinInstall(listener)).toBe(first);
+    progress?.({ event: "Progress", data: { chunkLength: 40 } });
+    // The card unmounted: no more progress reaches it.
+    stopInstallProgress(listener);
+    progress?.({ event: "Progress", data: { chunkLength: 60 } });
+    finish?.();
+    await first;
+    expect(seen).toEqual([0, 40]);
+
+    // Finished between the card's first render and its effect: nothing to join,
+    // and the restart marker tells the card what happened.
+    expect(joinInstall(listener)).toBeNull();
+    expect(pendingRestartVersion(0)).toBe("0.4.4");
+    expect(downloadAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects without an update to install", async () => {
+    checkMock.mockResolvedValue(null);
+    await checkForUpdate();
+    await expect(installUpdate()).rejects.toThrow("No update available");
   });
 });

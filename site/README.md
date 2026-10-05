@@ -2,6 +2,8 @@
 
 Hand-built static site for Lirrly. No build step, no dependencies — `index.html` + `styles.css` + `main.js`.
 
+Two pages, one language each: English at `index.html`, Arabic (RTL) at `ar/index.html`. They share `styles.css` and `main.js` (the demo text switches on `<html lang>`), so a copy or layout change goes into both. `privacy.html` is English-only and is also Lirrly Lite's App Store privacy URL — keep its brand "Lirrly".
+
 ## Preview locally
 
 ```bash

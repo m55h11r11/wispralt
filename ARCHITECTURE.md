@@ -2,7 +2,7 @@
 
 Canonical architecture for the **whole project**, first reviewed against the workspace on **2026-09-12**, re-verified against source on **2026-09-13**, and updated on **2026-09-14** after two rounds of repairs landed (audit A01, A05, A17, A32, then A02, A07, A09, A10, A22, A29, A33 and the transport half of A11). Product source baseline: local branch `lirrly`, commit `4d22d13`; public `origin/main` observed at `ae3b9bad`. **2026-09-26:** 0.4.2 published through the provenance gate — public `main` and tag `v0.4.2` both at `ab8661a`, which declares 0.4.2 — and the first real in-app update was run on hardware (§8). Architecture maintenance added during that audit is still a local, uncommitted change. External observations below are dated snapshots, not permanent status guarantees.
 
-This document describes what exists, including defects and boundaries. It does not certify that the app is ready to launch. The companion assessment is [FULL-AUDIT-2026-09-12.md](FULL-AUDIT-2026-09-12.md).
+This document describes what exists, including defects and boundaries. It does not certify that the app is ready to launch. The companion assessments are [FULL-AUDIT-2026-10-05.md](FULL-AUDIT-2026-10-05.md) (latest re-audit; findings A37–A48) and [FULL-AUDIT-2026-09-12.md](FULL-AUDIT-2026-09-12.md) (the A01–A36 baseline).
 
 ## Reading map
 
@@ -49,8 +49,8 @@ Arrows show intended application calls. The `Full → Native` transcription edge
 
 | Component | Location | Responsibility | Current boundary |
 |---|---|---|---|
-| Full app 0.4.2 | `lirrly/` | Dictation anywhere, FlowBar, transforms, dictionary/snippets, history, updater | Direct distribution; uses Accessibility/private macOS window support; not sandboxed for MAS |
-| Lite 1.0.2 | `lirrly-lite/` | Dictate/edit/transform/copy within its own window | Separate sandboxed MAS app (1.0.2 live since 2026-09-30; 174 storefronts including the EU as of 2026-10-03); proprietary source kept out of public clean cut |
+| Full app 0.4.3 | `lirrly/` | Dictation anywhere, FlowBar, transforms, dictionary/snippets, history, updater | Direct distribution; uses Accessibility/private macOS window support; not sandboxed for MAS |
+| Lite 1.0.3 | `lirrly-lite/` | Dictate/edit/transform/copy within its own window | Separate sandboxed MAS app (1.0.2 live since 2026-09-30; 174 storefronts including the EU as of 2026-10-03; 1.0.3 = the v9 icon plus core's one retry on a short Groq 429, no Lite source change); proprietary source kept out of public clean cut |
 | Core 0.1.0 | `crates/lirrly-core/` | Groq multipart/audio and chat requests, shared prompts, Keychain abstraction | Rust library compiled into both binaries; no independent server |
 | Insights | `insights/` | Opt-in error reports, manual feedback, basic admin dashboard | Private FastAPI service; independent from inference; full app only |
 | Website | `site/` | Marketing, downloads, privacy page, install command | Static files served through GitHub Pages/custom domain |
@@ -70,11 +70,11 @@ The root is not a JavaScript monorepo workspace or Cargo workspace. There are **
 - `lirrly-lite/src-tauri/src/lib.rs` registers only Lite's provider/key commands and clipboard/opener/store plugins.
 - `crates/lirrly-core/src/groq.rs` implements provider calls and shared prompts. `keychain.rs` scopes credential storage. `lib.rs` exports the library API.
 - `insights/app.py` includes schemas, SQL, HTTP routes, authorization, and server-rendered HTML. There is no separate admin frontend bundle.
-- `site/index.html`, `main.js`, `styles.css`, `privacy.html`, `robots.txt`, `llms.txt`, and `CNAME` are served directly without a build step.
+- `site/index.html`, `ar/index.html`, `main.js`, `styles.css`, `privacy.html`, `robots.txt`, `llms.txt`, and `CNAME` are served directly without a build step.
 - `docs/adr/001` through `005` record stack, full-app distribution, planned local/streaming work, licensing, and Lite distribution decisions. ADR-003 is a plan, not installed functionality.
 - `docs/RELEASE.md` is the release runbook; `docs/appstore/` is private listing/submission documentation.
 - `docs/screenshots/`, `appstore-screenshots/`, desktop `icons/`, and `site/img/` contain existing assets. `site/fonts/` contains self-hosted fonts. These are not runtime services.
-- **App icon (2026-10-01):** both apps' `src-tauri/icons/` sets and the four `site/img/` icons come from the owner's **v9** artwork (`app-icon-output/2026-10-01/lirrly-v9-r-hook.png`), regenerated with `tauri icon` / plain resizes. v9 is the June v8 woven-waves image with one change made by image generation (gpt-image-2 through the Hermes helper, fed v8 plus a one-change prompt): the tallest bar gained an r hook, so the letters read "lirrly" instead of "lirlly". Measured against v8: bar tops unchanged to the pixel, 0.03% of pixels outside the hook differ strongly. The published builds (full 0.4.2, Lite 1.0.2) still carry the older readable wordmark; v9 ships with the next builds. Remaining known property, verified on this macOS 26.6 machine: the artwork sits on an opaque black canvas (no alpha), which macOS 26 clips into the system rounded rectangle but macOS 12–15 show as a black square — a defect every Lirrly icon so far has had. Fixing it needs another generated image (AGENTS.md forbids editing assets with code) and the helper on the VPS currently hardcodes `background: opaque`. The tray template icon (`tray-icon-16/32.png`) is separate and unchanged.
+- **App icon (2026-10-01):** both apps' `src-tauri/icons/` sets and the four `site/img/` icons come from the owner's **v9** artwork (`app-icon-output/2026-10-01/lirrly-v9-r-hook.png`), regenerated with `tauri icon` / plain resizes. v9 is the June v8 woven-waves image with one change made by image generation (gpt-image-2 through the Hermes helper, fed v8 plus a one-change prompt): the tallest bar gained an r hook, so the letters read "lirrly" instead of "lirlly". Measured against v8: bar tops unchanged to the pixel, 0.03% of pixels outside the hook differ strongly. The published builds (full 0.4.2, Lite 1.0.2) still carry the older readable wordmark; v9 ships with the next builds. Remaining known property, verified on this macOS 26.6 machine: the artwork sits on an opaque black canvas (no alpha), which macOS 26 clips into the system rounded rectangle but macOS 12–15 show as a black square — a defect every Lirrly icon so far has had. Fixing it needs another generated image (AGENTS.md forbids editing assets with code) and the helper on the VPS currently hardcodes `background: opaque`. The tray template icon (`tray-icon-16/32.png`) is separate and unchanged. **Since 2026-10-05 the in-app marks are v9 too:** the Hub sidebar and onboarding show `lirrly/src/assets/lirrly-logo.png` (a byte copy of `src-tauri/icons/128x128@2x.png`) through `LogoMark`, replacing the drawn `WaveMark` SVG, and the website's nav/footer show `site/img/icon-192.png` instead of the CSS five-bar mark; the rounding is display CSS only. The monochrome tray glyph still predates v9 — a matching template image needs image generation.
 - `design/`, root `HANDOFF-*`, `PARITY-PLAN.md`, and `WISPR-CLONE-BLUEPRINT.md` are historical/reference material. They must not override current code evidence.
 - `.context/` holds audit evidence and collaboration scratch files; `handoffs/` and `MASTER-HANDOFF.md` retain local history. `signing/` holds private operational scripts and credentials and must remain excluded from publication.
 
@@ -88,12 +88,12 @@ Tauri config creates a main Hub window (1180×760; minimum 860×540) and a trans
 
 Native state includes:
 
-- `ShortcutRegistry`: mutex-protected action→accelerator mappings.
+- `ShortcutRegistry`: mutex-protected action→accelerator mappings. Since 0.4.4 it records only bindings that actually registered (audit A38): it starts empty, setup inserts on success only, and `update_shortcut` refuses a rebind whose old binding cannot be unregistered, re-registers the previous binding (or the default) when the new one fails, and drops the entry if even that fails.
 - `PasteLock`: Tokio mutex shared by synthetic selection copy and paste operations; contention returns a busy error.
 - `LastTranscript`: last output submitted to paste (including transforms), recorded before paste succeeds; memory-only.
 - `PasteMenuItemHandle`: enables the tray's last-transcript item after a paste.
 
-Default global shortcuts are Command+Shift+D for dictation and Option+T for transform. The frontend reapplies saved shortcuts. **Neither registration is fatal:** until 2026-09-14 the dictation binding propagated its error out of `setup`, so another app holding ⌘⇧D aborted the launch entirely and left no way to reach Settings and rebind. Both now log and degrade — the FlowBar record button and the tray still work. Rebinding tries to preserve the old mapping on conflicts. No hold-to-talk implementation exists.
+Default global shortcuts are Command+Shift+D for dictation and Option+T for transform. The frontend reapplies saved shortcuts. **Neither registration is fatal:** until 2026-09-14 the dictation binding propagated its error out of `setup`, so another app holding ⌘⇧D aborted the launch entirely and left no way to reach Settings and rebind. Both now log and degrade — the FlowBar record button and the tray still work. Rebinding tries to preserve the old mapping on conflicts. **A38 (0.4.4):** a default binding another app held at launch used to stay dead all session, because the registry recorded it anyway and the Hub's re-apply skipped defaults. The Hub now re-applies both bindings, defaults included, at startup; any that still fail are stored under `lirrly:shortcut-conflicts` (`src/lib/shortcutConflicts.ts`), announced once by notification when error notifications are on, and shown in the Shortcuts panel per action until that binding is successfully changed or reset. No hold-to-talk implementation exists.
 
 Tray Home/Shortcuts navigate the Hub. Tray language items open settings rather than setting a language directly. Tray Check for updates opens the Hub at Settings→Account and runs a visible update check there (audit A36, 0.4.3; until then it opened GitHub Releases, so an update started from the menu bar skipped the signature-checked in-app path). Help/support/feedback tray actions open GitHub issues.
 
@@ -148,7 +148,7 @@ A transform whose output hits the model's token limit fails with `output_truncat
 
 ### Paste and clipboard behavior
 
-The native paste helper snapshots the prior pasteboard **in full fidelity** — every item, every declared type, raw data (audit A18; capped at 8 MB, above which restore is skipped) — writes the generated text, checks Accessibility, emits Command+V via enigo, waits briefly, and restores the snapshot **only if `NSPasteboard.changeCount` still matches its own write**, so anything the user copied during the wait wins instead of being clobbered. `capture_selection` uses the same snapshot/restore, so an image or file clipboard survives an ⌥T transform. The exact module was acceptance-run on macserver (2026-09-17): a PNG+text pasteboard survived clobber→restore byte-identical, and the changeCount gate refused after a newer write. A shared try-lock serializes clipboard operations. The command updates the last-transcript state/menu before attempting paste; availability in that menu is not proof of insertion.
+The native paste helper snapshots the prior pasteboard **in full fidelity** — every item, every declared type, raw data (audit A18; capped at 64 MB since 0.4.4 — 8 MB skipped most copied photos, A40 — above which restore is skipped) — writes the generated text, checks Accessibility, emits Command+V via enigo, waits briefly, and restores the snapshot **only if `NSPasteboard.changeCount` still matches its own write**, so anything the user copied during the wait wins instead of being clobbered. `capture_selection` uses the same snapshot/restore, so an image or file clipboard survives an ⌥T transform. **A40 (0.4.4):** its zero-width-wrapped sentinel used to be left on the pasteboard when the keystroke failed or nothing was copied; now every exit restores the user's pasteboard over whatever this flow wrote (the sentinel, or the copied selection — a blank one included), and when the snapshot was too large to restore it clears the pasteboard instead, but only if the change count still equals this flow's own last write. A failed ⌘ release after the C went out is treated as a copy that may still land. The exact module was acceptance-run on macserver (2026-09-17): a PNG+text pasteboard survived clobber→restore byte-identical, and the changeCount gate refused after a newer write. A shared try-lock serializes clipboard operations. The command updates the last-transcript state/menu before attempting paste; availability in that menu is not proof of insertion.
 
 **Order matters here.** Until 2026-09-14 the Accessibility check ran *before* the clipboard write and returned early, so a user who declined the permission got a successful transcription and then lost it completely — while onboarding promised they could paste it with ⌘V. The write now happens first and the transcript is deliberately **not** restored away; that path returns `accessibility_not_granted_copied`, which both the dictation and transform flows treat as a completed operation needing one keystroke, surfaced as “Copied — press ⌘V to paste”. The same applies if the permission is revoked mid-flight.
 
@@ -187,6 +187,8 @@ Remaining lifecycle limits: text can be edited/cleared while a delayed result la
 **Apple snapshot, 2026-09-27: Lite 1.0.2 submitted — `WAITING_FOR_REVIEW`, `releaseType` `AFTER_APPROVAL`** (the owner asked for it to go live without another step; the defects that made auto-release dangerous are fixed in 1.0.2). The withdrawn version record was renamed 1.0.1 → 1.0.2 and given the new build (uploaded 2026-09-26 by `release-lite.sh --upload` after its full gate run). The App Privacy label now reads **Audio Data + Other User Content, used for App Functionality, linked to the user, not used for tracking** — "linked" because Apple treats personal data such as voice recordings as linked unless de-identified before collection, and Groq receives it under the user's own key. The store description's privacy paragraph was corrected to match (it had said transcripts stay on the Mac and "nothing phoning home"). Details and the watcher that follows the review: `docs/appstore/lirrly-lite-metadata.md`.
 
 **Apple snapshot, 2026-09-30: Lite 1.0.2 approved and released (`READY_FOR_DISTRIBUTION`, 2:57 PM) — but the app had no availability record, so it was on sale in no territory.** Availability was created the same evening through the API: 174 of 175 territories (mainland China excluded for its generative-AI permit rule), new territories included. 147 storefronts, Saudi Arabia and the US among them, went to `PROCESSING_TO_AVAILABLE`; the 27 EU states stay blocked until the owner declares EU Digital Services Act trader status. A new app needs availability as well as an approval, and "live" means the public lookup returns it, not the version state. By 9:30 PM the listing was public (1.0.2, Free) and the 147 storefronts `AVAILABLE`; at about 11:37 PM the owner declared **non-trader** DSA status, which unblocked the EU: by 2026-10-03 all 27 EU storefronts were `AVAILABLE` (174 of 175 territories; mainland China excluded by choice).
+
+**Apple snapshot, 2026-10-03: Lite 1.0.3 submitted — `WAITING_FOR_REVIEW` since 6:04 AM, `AFTER_APPROVAL`.** The first update: the v9 icon and core's short-429 retry, no Lite source change. Build 1.0.3 was `VALID` a minute after upload; the new version record inherited description, keywords, URLs, screenshots and review details, but not the promotional text, which the submission script copies. A LaunchAgent watcher (`com.mshrmnsr.lirrly-lite-103-monitor`) reports each state change and calls it live only when the public lookup returns 1.0.3.
 
 ## 5. Shared core/provider boundary
 
@@ -248,7 +250,7 @@ Routes:
 - `GET /admin`: HTTP Basic protection; escaped HTML shows error-report aggregates, feedback, the DB size and the retention policy. Its active-install count covers installations that reported errors, not all active users.
 - `POST /admin/erase?install_id=…`: Basic auth; deletes every event and feedback row for one install id and returns the counts. This is the deletion channel the privacy policy points at.
 
-The database has `events` and `feedback` tables, indexes on signature/time/install id. Retention is enforced by the app itself (events 180 days, feedback 365 days; purge at startup and hourly, piggybacked on ingest). SQL uses bound parameters; admin user content is escaped. Rate limiting (60/minute) keys buckets by a **salted hash** of the client address (X-Forwarded-For trusted only when the peer is loopback, i.e. Caddy) — memory-only, bounded map, salt regenerated each restart, so no address is stored or derivable. Request bodies over 32 KB are rejected by the app (Caddy budget on top). A malicious client can still fabricate reports — ingest is deliberately unauthenticated. There is no native crash-dump ingestion/symbolication, alerts, or ticket workflow. `insights/test_app.py` (10 tests, run on macserver) includes negative privacy tests that post keys/emails and read the database to prove they were not stored, plus erase/retention/health/rate-limit coverage; `requirements.txt` is pinned to the tested versions. `insights/README.md` carries the operational runbook: erase-by-id, daily backup cron keeping 14, restore drill, and the logging-chain checklist.
+The database has `events` and `feedback` tables, indexes on signature/time/install id. Retention is enforced by the app itself (events 180 days, feedback 365 days; purge at startup, then on a clock — a background task in the lifespan runs it hourly in a worker thread, so expiry no longer waits for new reports to arrive, audit A42 — and still opportunistically on ingest). SQL uses bound parameters; admin user content is escaped. Rate limiting (60/minute) keys buckets by a **salted hash** of the client address (X-Forwarded-For trusted only when the peer is loopback, i.e. Caddy) — memory-only, bounded map, salt regenerated each restart, so no address is stored or derivable. Request bodies over 32 KB are rejected by the app (Caddy budget on top). A malicious client can still fabricate reports — ingest is deliberately unauthenticated. There is no native crash-dump ingestion/symbolication, alerts, or ticket workflow. `insights/test_app.py` (11 tests, run on macserver) includes negative privacy tests that post keys/emails and read the database to prove they were not stored, plus erase/retention/health/rate-limit coverage; `requirements.txt` is pinned to the tested versions — since 2026-10-05 the patched FastAPI 0.142 / Starlette 1.7 stack (audit A45), which needs Python ≥ 3.10, so the venv is built with `python3.11` (AlmaLinux 9's system Python is 3.9). `insights/README.md` carries the operational runbook: erase-by-id, daily backup cron keeping 14, restore drill, and the logging-chain checklist.
 
 Full client reporting is off by default. `reportError` checks `shareAnalytics`, sends a stable install ID and an error summary, and suppresses reporting failures. Since 2026-09-14 that summary passes through `sanitizeReport()`: a provider failure — which arrives as the raw HTTP response body and can echo request content — is reduced to its status and the provider's own error code, and credential- and email-shaped text is redacted from everything else. `sendFeedback` is intentional user submission and can attach an email; only key-shaped text is stripped from it, because the prose is the point.
 
@@ -258,21 +260,23 @@ Transport sanitizing (2026-09-14) plus the server-side scrub, retention, erase c
 
 ## 8. Website, distribution, and updates
 
-The website uses static HTML/CSS/JavaScript, self-hosted fonts, existing app screenshots/GIFs, animated examples, dark mode, responsive layouts, and reduced-motion handling. The demo animation is illustrative; it is not a live connection to the desktop app. `site/CNAME` names lirrly.com; the Pages workflow uploads the directory directly.
+The website uses static HTML/CSS/JavaScript, self-hosted fonts, existing app screenshots/GIFs, animated examples, dark mode, responsive layouts, and reduced-motion handling. **Since 2026-10-05 it is two monolingual pages** — English at `/` and Arabic (RTL, `lang="ar" dir="rtl"`) at `/ar/` — instead of one page mixing both languages; they share `styles.css` (Arabic-page rules at its end: Readex Pro display type, no tracking or synthetic italics, mirrored marquee/brew/selection sweep) and `main.js` (demo text switches on `<html lang>`), link each other with a language switch and reciprocal `hreflang`. The site calls the full app **Lirrly Pro**; the bundle, cask and update paths keep the name Lirrly, and `privacy.html` keeps "Lirrly" because it is also Lite's App Store privacy URL. Download buttons link `releases/latest/download/Lirrly.dmg` (one click, audit A46). The demo animation is illustrative; it is not a live connection to the desktop app. `site/CNAME` names lirrly.com; the Pages workflow uploads the directory directly.
 
 Scroll-reveal content is **visible by default**; `main.js` adds `.js-reveal` to the document element as its first act, and only that class enables the hide-then-reveal styling. Before 2026-09-14 the hiding was unconditional, so disabled or failed JavaScript rendered the page with every heading at `opacity: 0`.
 
 Marketing, onboarding, README, `llms.txt` and the privacy page were reconciled with actual behaviour on 2026-09-14 (audit A29). The claims “no Lirrly server”, “no telemetry”, “nothing phoning home”, “nothing leaves this Mac except the audio”, “your key never leaves this Mac” and an “export” affordance that was never built are all gone. The accurate position — no account, no Lirrly service in the dictation path, diagnostics opt-in and off by default, the key sent only to Groq — is what is now published.
 
-The full application currently distributes an Apple Silicon DMG via GitHub Releases and a separate Homebrew tap (`m55h11r11/homebrew-lirrly`). **Published release: 0.4.2 (2026-09-26)** on all three channels — GitHub release marked Latest, updater feed `latest.json`, tap cask. Verified on macserver the same day: the public DMG matches its published SHA-256 and Gatekeeper accepts its app as Notarized Developer ID; `brew install --cask` delivers 0.4.2 and uninstalls cleanly; the live site no longer carries the retracted claims and the privacy page is dated 26 September. Branch `wave2-lite` is ahead of what is published (0.4.3 candidate: Waves 1–4 and A35). The config minimum is macOS 12.0; only an aarch64 release was verified. An Intel/macOS-version compatibility matrix has not been demonstrated. Do not imply all Macs are supported from the OS minimum alone.
+The full application currently distributes an Apple Silicon DMG via GitHub Releases and a separate Homebrew tap (`m55h11r11/homebrew-lirrly`). **Published release: 0.4.3 (2026-10-03, 5:45 AM)** on all three channels — GitHub release marked Latest, updater feed `latest.json`, tap cask — from public commit `f0100e5` (clean cut of the private `v0.4.3` commit; public CI green before going live). Verified on macserver the same morning: the feed serves 0.4.3 and its archive (byte-identical to the notarized build) verifies against the updater key every installed copy embeds; the public DMG matches its published SHA-256 and Gatekeeper accepts its app as Notarized Developer ID; `brew install --cask` delivers 0.4.3 and uninstalls cleanly; lirrly.com serves the v9 icons and the 0.4.3 privacy text. 0.4.2 (2026-09-26) was the previous release. The full app has nothing unpublished on `wave2-lite`. The config minimum is macOS 12.0; only an aarch64 release was verified. An Intel/macOS-version compatibility matrix has not been demonstrated. Do not imply all Macs are supported from the OS minimum alone.
 
-Full updater flow: Mounting Settings→Account quietly checks GitHub's latest release `latest.json`; the Tauri plugin selects a platform archive; on user request it downloads the archive, verifies its update signature, and installs it. Restart is explicit, but between install and restart the old process runs from a deleted bundle and macOS refuses its permission checks (A36). So a successful install writes a marker (`lirrly:update-installed`, shared localStorage, stamped with the time); while a marker from this run exists the FlowBar refuses new dictations and transforms with "Restart Lirrly to finish the update" and a Restart button (the FlowBar capability gained `process:allow-restart` for it), and the Hub card keeps offering Restart instead of the same install. A take already under way is never interrupted. Any restart makes the marker stale and it is removed. The signature authenticates the **archive**, not a separately signed JSON manifest. Metadata/URLs still rely on the HTTPS/release service; the old “signed manifest” wording overstates the mechanism.
+Full updater flow: Mounting Settings→Account quietly checks GitHub's latest release `latest.json` (skipped while an install is running or waiting for its restart); the Tauri plugin selects a platform archive; on user request it downloads the archive, verifies its update signature, and installs it. Restart is explicit, but between install and restart the old process runs from a deleted bundle and macOS refuses its permission checks (A36). So a successful install writes a marker (`lirrly:update-installed`, shared localStorage, stamped with the time); while a marker from this run exists the FlowBar refuses new dictations and transforms with "Restart Lirrly to finish the update" and a Restart button (the FlowBar capability gained `process:allow-restart` for it), and the Hub card keeps offering Restart instead of the same install. A take already under way is never interrupted. Any restart makes the marker stale and it is removed. **A39 (0.4.4):** the install is single-flight at module level (`src/lib/updater.ts`); an update card that remounts mid-download (leaving Account and coming back) only joins it via `joinInstall` and shows its progress — it can no longer start a second `downloadAndInstall` racing the first over the bundle swap — and an unmounted card stops receiving progress. The signature authenticates the **archive**, not a separately signed JSON manifest. Metadata/URLs still rely on the HTTPS/release service; the old “signed manifest” wording overstates the mechanism.
 
-**First real update, 2026-09-26 — passed end to end (macserver1, driven through the accessibility API plus one verified real click; kit and logs in `.context/update-e2e-2026-09-26/`):** the published 0.4.1, installed from its own DMG, found 0.4.2 through that quiet check; **Update now** downloaded the archive, verified it against the key embedded in 0.4.1 and swapped the bundle in place (passes `codesign --verify --deep --strict`); **Restart** relaunched it within a second as 0.4.2, which then reported itself up to date. The relaunched process is its own TCC-responsible process (`launchctl procinfo`), so permissions are not attributed to the dead old one; Accessibility and Microphone grants and the designated requirement were unchanged, the history file was byte-identical, Gatekeeper still reported Notarized Developer ID, and the installed CDHash equalled the directly installed 0.4.2's. Signature rejection was exercised separately with the plugin's exact verification (`minisign-verify` 0.2.5, legacy allowed): only the genuine archive with its own signature verifies — a one-byte flip, a truncation, or 0.4.1's signature on the 0.4.2 archive all fail before anything is installed. The macOS installer path (`tauri-plugin-updater` 2.11.0) renames the running bundle into a temp dir, moves the extracted one into place and deletes the old one; for an admin user in `/Applications` no password prompt appears. Two consequences worth knowing. **Between install and restart the old process runs from a deleted executable, so tccd rejects every permission check it makes** (`proc_pidpath_audittoken` → ENOENT) — microphone, paste via Accessibility, and assistive tools reading its window all fail until Restart. And the tray menu's **“Check for updates…” opens the GitHub releases page instead of this flow**, so a user who starts there downloads a DMG by hand.
+**First real update, 2026-09-26 — passed end to end (macserver1, driven through the accessibility API plus one verified real click; kit and logs in `.context/update-e2e-2026-09-26/`):** the published 0.4.1, installed from its own DMG, found 0.4.2 through that quiet check; **Update now** downloaded the archive, verified it against the key embedded in 0.4.1 and swapped the bundle in place (passes `codesign --verify --deep --strict`); **Restart** relaunched it within a second as 0.4.2, which then reported itself up to date. The relaunched process is its own TCC-responsible process (`launchctl procinfo`), so permissions are not attributed to the dead old one; Accessibility and Microphone grants and the designated requirement were unchanged, the history file was byte-identical, Gatekeeper still reported Notarized Developer ID, and the installed CDHash equalled the directly installed 0.4.2's. Signature rejection was exercised separately with the plugin's exact verification (`minisign-verify` 0.2.5, legacy allowed): only the genuine archive with its own signature verifies — a one-byte flip, a truncation, or 0.4.1's signature on the 0.4.2 archive all fail before anything is installed. The macOS installer path (`tauri-plugin-updater` 2.11.0) renames the running bundle into a temp dir, moves the extracted one into place and deletes the old one; for an admin user in `/Applications` no password prompt appears. That run surfaced two rough edges, both fixed in 0.4.3 (A36). **Between install and restart the old process runs from a deleted executable, so tccd rejects every permission check it makes** (`proc_pidpath_audittoken` → ENOENT) — microphone, paste via Accessibility, and assistive tools reading its window all fail until Restart; 0.4.3 refuses new takes until the restart (see above). And the tray menu's **“Check for updates…” opened the GitHub releases page instead of this flow**; it now opens the Hub at Account and runs the check there.
 
-`release.sh`: clean-tree check → version changes across every version-bearing file (with an equality assertion) → frontend, full-Rust, core-crate and architecture/IPC gates → signed/notarized bundle → trust checks → local commit/tag → **public-source provenance gate** → GitHub release uploaded as a **draft** targeted at that public commit → Homebrew cask commit prepared → **go-live flip** (draft→published+latest) immediately followed by the tap push (audit A31: publishing used to happen before the tap update, so a tap failure left channels straddling versions; now nothing is public until every channel is one push away, and a tap-push failure after the flip prints the exact recovery command). Private signing material stays outside source. Staging is an explicit file list rather than `git add -A`, which had previously swept automation droppings — including a live API key — into the index.
+**Second real update, 2026-10-03 — published 0.4.2 → published 0.4.3, PASS on the first run (macserver1; kit and log in `.context/update-e2e-2026-10-03/`):** 0.4.2, installed from its own DMG, offered "0.4.3 available" from its quiet check; **Update now** installed in 73 s (bundle passes `codesign --verify --deep --strict`); a verified real click on **Restart** relaunched it as its own TCC-responsible process reporting 0.4.3 and "up to date". The installed CDHash equals the app inside the published 0.4.3 DMG; Gatekeeper and the staple check pass; Accessibility and Microphone grants and the designated requirement are unchanged; the history entries are unchanged (compared without the ids 0.4.3 backfills). **A36's tray half, on the real artifact:** with the Hub hidden and the update card unmounted, the menu bar's "Check for updates..." (pressed through the accessibility API) opened the Hub at Account and ran a visible check that ended "up to date" — text the card's quiet mount check never shows, so it can only have come from the tray's request. A36's restart half cannot be exercised by a 0.4.2 → 0.4.3 update (0.4.2's updater writes no marker); it is covered by unit tests and first runs for real on the next update.
 
-Until 2026-09-14 the script published with `--target main` before the separate clean public-source update, which allowed a release tag to point at older source. **The public v0.4.1 tag resolves to source with package version 0.4.0** (observed 2026-09-12). It is left as it is — moving a published tag would break anyone who pinned it — and is superseded: **v0.4.2 (2026-09-26) was the first release made through the provenance gate, and its tag resolves to `ab8661a`, which declares 0.4.2** (audit A12 resolved). A signed binary is not evidence that its release source tag is correct.
+`release.sh`: clean-tree check → version changes across every version-bearing file (with an equality assertion) → frontend, full-Rust, core-crate and architecture/IPC gates → signed/notarized bundle → trust checks → local commit/tag → **public-source provenance gate** → GitHub release uploaded as a **draft** targeted at that public commit → Homebrew cask commit prepared → **go-live flip** (draft→published+latest) immediately followed by the tap push (audit A31: publishing used to happen before the tap update, so a tap failure left channels straddling versions; now nothing is public until every channel is one push away, and a tap-push failure after the flip prints the exact recovery command). Private signing material stays outside source. Staging is an explicit file list rather than `git add -A`, which had previously swept automation droppings — including a live API key — into the index. **0.4.4 (audit A43, A46):** phase 1 asserts the built app's `CFBundleShortVersionString` equals the release version and records SHA-256s of the DMG, archive and signature in `release-manifest.json` beside the bundle; `--publish-only` refuses anything not byte-identical, so a later test build can no longer be uploaded and signed into `latest.json` under this version. The DMG is also uploaded as `Lirrly.dmg`, the stable name the website links. The tap step verifies the cask now carries this version and SHA-256, and a failed tap commit stops the release before anything is public instead of being swallowed by `|| true`.
+
+Until 2026-09-14 the script published with `--target main` before the separate clean public-source update, which allowed a release tag to point at older source. **The public v0.4.1 tag resolves to source with package version 0.4.0** (observed 2026-09-12). It is left as it is — moving a published tag would break anyone who pinned it — and is superseded: **v0.4.2 (2026-09-26) was the first release made through the provenance gate, and its tag resolves to `ab8661a`, which declares 0.4.2** (audit A12 resolved); v0.4.3 (2026-10-03) went through the same gate and its tag resolves to `f0100e5`, which declares 0.4.3. A signed binary is not evidence that its release source tag is correct.
 
 `release-lite.sh` builds the separate Lite package, checks its sandbox/signature/profile, creates an installer package, and optionally uses Transporter to upload. Upload/processing is separate from App Review submission and approval. There is no automated release-approval tracker in this repo.
 
@@ -328,8 +332,8 @@ Generated by `python3 scripts/architecture.py --refresh`. This section describes
 
 | Product | Package version | Bundle identifier | Windows |
 |---|---|---|---|
-| Lirrly | 0.4.3 | `com.mshrmnsr.lirrly` | main, flowbar |
-| Lirrly Lite | 1.0.2 | `com.mshrmnsr.lirrly-lite` | main |
+| Lirrly | 0.4.4 | `com.mshrmnsr.lirrly` | main, flowbar |
+| Lirrly Lite | 1.0.3 | `com.mshrmnsr.lirrly-lite` | main |
 
 ### Native commands
 
@@ -457,6 +461,8 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
 - [lirrly/src/lib/engine.test.ts](lirrly/src/lib/engine.test.ts)
 - [lirrly/src/lib/engine.ts](lirrly/src/lib/engine.ts)
 - [lirrly/src/lib/history.test.ts](lirrly/src/lib/history.test.ts)
+- [lirrly/src/lib/shortcutConflicts.test.ts](lirrly/src/lib/shortcutConflicts.test.ts)
+- [lirrly/src/lib/shortcutConflicts.ts](lirrly/src/lib/shortcutConflicts.ts)
 - [lirrly/src/lib/shortcuts.test.ts](lirrly/src/lib/shortcuts.test.ts)
 - [lirrly/src/lib/shortcuts.ts](lirrly/src/lib/shortcuts.ts)
 - [lirrly/src/lib/store.test.ts](lirrly/src/lib/store.test.ts)
@@ -484,6 +490,7 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
 - [scripts/release.sh](scripts/release.sh)
 - [site/CNAME](site/CNAME)
 - [site/README.md](site/README.md)
+- [site/ar/index.html](site/ar/index.html)
 - [site/index.html](site/index.html)
 - [site/llms.txt](site/llms.txt)
 - [site/main.js](site/main.js)
@@ -502,7 +509,7 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
   "CONTRIBUTING.md": "b7f8984f807eee11b34cd15db6ae40424a0c3b6fc675b272f2f35e0755135602",
   "LICENSE": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
   "crates/lirrly-core/.cargo/config.toml": "1bd8eab0403928c1f35511045b87c34f0a2d121ca0c214fb49286d5f5161ce06",
-  "crates/lirrly-core/Cargo.lock": "6e4dd3cdb03aecee369ab90e40d1edb6d57708b7ee001917647c15afd7a47dc0",
+  "crates/lirrly-core/Cargo.lock": "a9c9ee1152647a011aa80c4175efc038104d8725d86f497141839f7bf968dcfb",
   "crates/lirrly-core/Cargo.toml": "2e5c847352f2b78e1862fda69e88eb293fec4ea10536401f292c803750c73a4e",
   "crates/lirrly-core/src/groq.rs": "e242ff116b0092b879da96b387a8b2d46a5120e400ea6f04381f57c3415025ee",
   "crates/lirrly-core/src/keychain.rs": "b5c092cdd232200c6485f3f392f2fcc9a4cc34e7ca3d53dfc68a5bdc4e079c29",
@@ -513,21 +520,21 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
   "docs/adr/003-local-streaming-engine.md": "82ccf299cae6248996395e81699ca0a6fdc06489a8fe5d991766bcad6c9111b4",
   "docs/adr/004-licensing-agpl-and-monetization.md": "b3ff956a1b332cce14026dad2b4dced7a40cfda29a3f43b53dcdaa58df071a98",
   "docs/adr/005-mac-app-store-lite.md": "7adba6035708e616a3ecc7e7954be1e0a894719366c27c6ee9531b924a48bb20",
-  "docs/appstore/lirrly-lite-metadata.md": "e7107900f6cb1181e057026b9b346a4894fd9cfb52bcada2961477e73f3799ed",
-  "insights/README.md": "53315a62e1b9986d6fb48c9d0af12c6edd84a50735c97143f1a2e335970868ae",
-  "insights/app.py": "13d02e6775d4fa65c97b5f84f70872cdb32617e252f4fb88a67af8e7d93aeb37",
+  "docs/appstore/lirrly-lite-metadata.md": "f3e9a56c088ca0e8a08540c90a37921125752967a042ee61562e42424499c965",
+  "insights/README.md": "903c327676cabb0ca1b823c01b78191c70b4ae0d3a28036d486d78f1443de367",
+  "insights/app.py": "01878d4847f4a202cd14a8878447ef8354d5511cb13c7fd9ed4cd1fa6c703d20",
   "insights/lirrly-insights.service": "6e49d4368d17ee32cff248f305b3835223c71095cb24a236b3ef13918020d165",
-  "insights/requirements.txt": "bab4bdd92dd784859e59b27cfbc0a45d0f923ddbda5e0678f7eb073a5cf8e0a9",
-  "insights/test_app.py": "e3b3480cef0a5a2ce5382f0a4770962d7c5679464d2c25f7855d2db8cf4b417e",
+  "insights/requirements.txt": "8428caa1c8452bf23f73537fe4a616d20efc33ebb64193497fc185148ade63c4",
+  "insights/test_app.py": "56aaf0c2df8f5bda21581bdfa1cbb3feea7fbd31d04d9173d95074f6c331bb69",
   "lirrly-lite/LICENSE.md": "997bcaf9185070ed026f3f7643db4129e8c4301fdb593bb02bc519ae77287775",
   "lirrly-lite/README.md": "084df1e595d2a266ea18fb006a296728475c99c22d33a3576134074a7ef1bd54",
   "lirrly-lite/eslint.config.js": "98508affab4ba9cf6a63022b023bd01770ff5dc93a8aaf6ca87a8ddbff1d2b1b",
   "lirrly-lite/index.html": "73b0c890f9ea13801d5f27f7840995a4baec0df3ee4ebff0093cc0640a369434",
-  "lirrly-lite/package-lock.json": "140e9da333be20c7ac2a1c83471fb66f9bf42d5465870e5d5c794440be17ae55",
-  "lirrly-lite/package.json": "3110ba423afb6f43ebe15e8ebd488d93932822ecb6c947efae20a31ba2209f7f",
+  "lirrly-lite/package-lock.json": "fcdfb490cbb818cbff35a01acd1838348bc79d91bc1c3db74a0d1248b1481ed2",
+  "lirrly-lite/package.json": "4a2e39e911ac74c25cc2116f8cbc826f7a3641ba562d012bf9247f2f7e2935b6",
   "lirrly-lite/src-tauri/.cargo/config.toml": "1bd8eab0403928c1f35511045b87c34f0a2d121ca0c214fb49286d5f5161ce06",
-  "lirrly-lite/src-tauri/Cargo.lock": "c64146a54cb1e9f79509a092ca4d1583298342c5f1a28d56f06d0721cc617b17",
-  "lirrly-lite/src-tauri/Cargo.toml": "f611655c22edee4b37665d80b1791c33eab53e1be8a1906615e524a907209ef7",
+  "lirrly-lite/src-tauri/Cargo.lock": "4e594b2b44ef17df61c2bccb50005208bda5758a74d87e66d13c7e8591169d14",
+  "lirrly-lite/src-tauri/Cargo.toml": "a2492c299139bb4ad88b015017b8655710f88e910956f2e06c32df3be0f65b12",
   "lirrly-lite/src-tauri/Info.plist": "83b41dfea7761ea522fd5f01ccd7d92e06666b1e55b54474ef8f5c73c87d5008",
   "lirrly-lite/src-tauri/LirrlyLite.entitlements": "376b86b43801646e2d1ba395e005fe9706a5fcca02c53d0174eec2968aa8a8b9",
   "lirrly-lite/src-tauri/LirrlyLiteLocal.entitlements": "e2b5d1831047f56e0eb902e5230fa162b67a33fc4576d621bb38dcaf0a28a7fd",
@@ -535,7 +542,7 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
   "lirrly-lite/src-tauri/capabilities/default.json": "7dc28a4d1044af163ac7e6a0b3ea8560d936c1e215764f62b4c15229874274e3",
   "lirrly-lite/src-tauri/src/lib.rs": "9663f8e593d32c996de64af4b80c363e360bfcaac5805a2e18a4cdb54183f295",
   "lirrly-lite/src-tauri/src/main.rs": "3f495db1fae4be4d399e0010383b944e38f59def5db642e0b3ba8af23ef807ec",
-  "lirrly-lite/src-tauri/tauri.conf.json": "fa76860874a041d41e3be55de0e10645e5b9563aedca77e3ddde40ef2ab46326",
+  "lirrly-lite/src-tauri/tauri.conf.json": "098e0756f00f51588e6080d8b191539f96a73a7de786ba64fe50ac03a5287874",
   "lirrly-lite/src-tauri/tauri.localtest.conf.json": "bafd1eb739fd1617d06d7a4503263c65e202744a7f08d49dabf912507aa2ce85",
   "lirrly-lite/src-tauri/tauri.screenshots.conf.json": "9239c0e3a932d6b04aa8aef803ced86ad38f5cb0a4f70eb0376f853aff4d83dd",
   "lirrly-lite/src/App.tsx": "ddea460d6b39bbc7b8359cb2dd01f7cc55a79414b4182893067d5d96e833eca0",
@@ -558,41 +565,43 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
   "lirrly/README.md": "f5139a2d80396e863bc5cd937714b2466c6c0b59deae98ed3fa85c09346893cc",
   "lirrly/eslint.config.js": "3c737b29ecf9b5f03c9a58448ac8a402cadd354a67a39310597a0ef081cc1282",
   "lirrly/index.html": "f14ef423f7554ae2b318b30ed5ee131d2caab30dfca95eac99db839a867c4406",
-  "lirrly/package-lock.json": "996233092574dea724f3a0683eb2f55bb6e0b53d0cd603a5bcc6db00e8b6cf4a",
-  "lirrly/package.json": "4c35569931d0b01d21e4988da0a647a0e01df059858ac8cf7650ff5b0dc00602",
+  "lirrly/package-lock.json": "d4cbcc77021c71dd43c79fcbdc00d46eb4d839fa21ddc012aa4c55e20bcfb112",
+  "lirrly/package.json": "24f5ff40f7c69211d79f694f67c7d343cc214c75cbbafba0df2dd988f3b0b078",
   "lirrly/src-tauri/.cargo/config.toml": "1bd8eab0403928c1f35511045b87c34f0a2d121ca0c214fb49286d5f5161ce06",
-  "lirrly/src-tauri/Cargo.lock": "fa8ac0b75c8d8a8e76d9815f08edc874ee0bb6272b0ef3878d34e9fe813f5186",
-  "lirrly/src-tauri/Cargo.toml": "b7732302040f6a7e485f2d7d6f3f161d5835d2767a9d591e714f0f64615743a4",
+  "lirrly/src-tauri/Cargo.lock": "9e5d866e7656d4b0d2d0bb319a0353d8116c993c7391f3772e7fdd321159194b",
+  "lirrly/src-tauri/Cargo.toml": "91c1381212aea76df075f79b9f3b76d63bfa9c9323e9f40448841035ad1a608f",
   "lirrly/src-tauri/Info.plist": "71e92a8cf058ee54f639958c1af7c3d7c543485aad53850e4e972198c8101e2c",
   "lirrly/src-tauri/Lirrly.entitlements": "dc2fa018417d64ce13c86d15c387c0e2a2a2d939a23e5712141bbfd14f3d1a7c",
   "lirrly/src-tauri/build.rs": "487059eaf8a947b80f20a9aacac038a5047b2ad69d2401b827376c67d6fe847f",
   "lirrly/src-tauri/capabilities/flowbar.json": "bd4e2ce4256b547ef0114e7c7b17c9ffd5e1dd422495a33fab4f29702f03aa53",
   "lirrly/src-tauri/capabilities/main.json": "753f6c6614fff9fc00c89bea59241ce187d852a625054e99cbe77a43c38ef610",
-  "lirrly/src-tauri/src/lib.rs": "eab951d6621fae36227c7d3f6e1c07f11f90a27b06ae7750651d4fe3fd77d5c9",
+  "lirrly/src-tauri/src/lib.rs": "8180e986afc980bff96e39ff0f9bb1f59650cb7a1f21af2e9535086abfc98beb",
   "lirrly/src-tauri/src/main.rs": "25f892ad7f05c7333d3b961e029c9876d4a46eee38111ab72bec4d32425177ad",
-  "lirrly/src-tauri/tauri.conf.json": "ec12f2df7046ea23bb5db48527ef6340493398ff05f469040347ec433e435455",
+  "lirrly/src-tauri/tauri.conf.json": "e8725c3cd7cdf83b7753f05f760214a1a2d9e09d799ad75f68ae510abfd6d00a",
   "lirrly/src/flowbar/FlowBar.css": "a0893ad1075590dabce53690ab21a5693cdf2d0de66a5a98c735378409353b04",
-  "lirrly/src/flowbar/FlowBar.tsx": "32f054a158b928c1a6404718761f4edf58cd32d3557f50d5558b413abe8f03a0",
+  "lirrly/src/flowbar/FlowBar.tsx": "0888bf1bfb4b38a02d8fe9be93e3aa7d73a08852f0978b2d4be9204f4fdfa4d4",
   "lirrly/src/lib/audio.test.ts": "4723d0110d14f1851c79e21012ecb927b3fc1a5f1dde59b01b8ad510dc10bd62",
   "lirrly/src/lib/audio.ts": "a8126b7571767aaf95d31a5ea5894941d5b15d7f0860e50abede7470b83a41b4",
   "lirrly/src/lib/engine.test.ts": "b149d7edf0ae427a5e648a7bfbff2bee469c78010a9914bb82303413a5114101",
   "lirrly/src/lib/engine.ts": "ad4e268dfb54a4311e8143e5e4ac99feeeb85ee9d0e80e0f579e19ceb52acb5f",
   "lirrly/src/lib/history.test.ts": "299199ad033e34e4eed0e8fb29fcb334e3bf1efed606a99d1b497aa12185ac7d",
+  "lirrly/src/lib/shortcutConflicts.test.ts": "2aef5df9b4222f88fd6729546f95c70fb1d8490f3b20edba60e8b19c88c254ce",
+  "lirrly/src/lib/shortcutConflicts.ts": "d9c3b0f6f340859840dd52ff74d526315b529f3beaca3a7222ccfb9e152238a9",
   "lirrly/src/lib/shortcuts.test.ts": "f5f449981ab3dba8ebd913267bc38e6716e1010c379bc34c6572272cec522786",
   "lirrly/src/lib/shortcuts.ts": "bcb14736276f4a58da15b575b51935b232f4a9e559f364e0ef3f0253e1a1cede",
   "lirrly/src/lib/store.test.ts": "da3233cdbe6a60c3de37f6499489f437a1e81b0370f04d80e21306715c569fbb",
   "lirrly/src/lib/store.ts": "5464ae61eb1e9e55077d5bb3fe6fea954e9d2104b779fa800f15a22e7da897cb",
   "lirrly/src/lib/telemetry.test.ts": "2c32c7733a782d314cd6c601d81ed2fdd0f6034ec59885f1942ed901bffdda9f",
   "lirrly/src/lib/telemetry.ts": "8f9f71b8a6357881781f60e903124d6b5629da95a8cd2dd28e198e17c42ce63b",
-  "lirrly/src/lib/updater.test.ts": "c91607a736178c9ae53c983792d8bdf9c711450332ba1aa3827e80d52defe7e2",
-  "lirrly/src/lib/updater.ts": "19e80601ddee0da0e114c05bf11ee61b9d17065f6732991157b98544234e7ab3",
+  "lirrly/src/lib/updater.test.ts": "a04f1d25c2a57481c33c486076b11ab7e19e6a50fa63b69264da379739fdf6ad",
+  "lirrly/src/lib/updater.ts": "cef05fe1c07549d77aed7dc42f88409e21bd2c728886cd0ae04248212fc7c3e1",
   "lirrly/src/main.tsx": "69d8c2c095034d765740d8a8dd3ec316f86aff4b9f23e129790365038d312301",
-  "lirrly/src/onboarding/OnboardingWizard.tsx": "6694625c67e0d363ab5d220832516ef45d6be14fb4ab18f464e49da2e953080b",
+  "lirrly/src/onboarding/OnboardingWizard.tsx": "e7509da3e8262324eddeace697e6b40e3bfaac53327ece5a32be0235cd8252db",
   "lirrly/src/onboarding/onboarding.css": "39e824984ec11dbee3e3a6c637841151c39894dd78dabcf0b1bfa1c2ca11344d",
   "lirrly/src/settings/Icon.tsx": "308ede01cb77f4febec5dc7754e1903ccc9223f270d8c3dd13976f6f2cc6b64a",
-  "lirrly/src/settings/Logo.tsx": "45c6ae49317442745ea959c4c024d1f38cb557305c62eea0be660359bd4634eb",
+  "lirrly/src/settings/Logo.tsx": "0e9ef7649ea6025dde560e5a7043d2fb5498d68c4ba993be6c637140cb225e33",
   "lirrly/src/settings/Settings.css": "7ef4f9ba73498dfd7dc759aa9a4e36155fd491b97a173ffaf2ac08d963a316e0",
-  "lirrly/src/settings/Settings.tsx": "2e174aa39932046fcf6259c87644e7c92ab4d812095c9f6ff9a82b98a40922e2",
+  "lirrly/src/settings/Settings.tsx": "ade3f5a4848aa8bf8eeef39642a9df7392752921cc68be8b2ac130eaead532f6",
   "lirrly/src/styles/theme.css": "f0f9281a8da0c8ae9bd79b25ea88a5e93487711004e8c486acfe7ca0faa4f168",
   "lirrly/src/test/setup.ts": "31d77e79f1536eee9e29b89e4a33611fbff4956f5785b9cc478fd158fa725000",
   "lirrly/src/vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
@@ -602,14 +611,15 @@ All paths below participate in the drift check. Images/fonts are inventoried by 
   "lirrly/vitest.config.ts": "68046dfa0f47f026987232f663de8b53312a0493f9afc813dcbb6221f02a5445",
   "scripts/architecture.py": "f4b39c0162c1d23d1395c9e825cb4af2043b3a74b7916ca8a8869e8a8c25717e",
   "scripts/release-lite.sh": "aff85468946581c372f8df8886d170d26fc04c912073cd885b0fe1e61d069750",
-  "scripts/release.sh": "38d1afd578dc772404256c257af32590d5e9c2fedbc50fed95abdf9132376834",
+  "scripts/release.sh": "c9a6dd85ee56531b456f7bef1527ec63e46f91e2109226f1cb3754213dead8f7",
   "site/CNAME": "6e2f3c4d3cb711f91db2705321e9b4c8ce13837444b4d91c816e1b3dd806629c",
-  "site/README.md": "d4de8c629df17a70bf7f921a8ada0e7ed42e676307ea46c1344254ae8a1ee9e6",
-  "site/index.html": "2f51e067cdf5b8965dab750a8426f06d85726c462176e69da911ec757b8c24de",
-  "site/llms.txt": "2518cdf1f5245953a279601251cb3418e4d3553b01ffc709e8617051c08bca47",
-  "site/main.js": "1b1276c83c4329110b295169733e847e664cd8e827f4de98ce35b72cfc6b4a2d",
-  "site/privacy.html": "3fc45b2c0a0c721a207cb7b6bef5869d9b0ab4d9b336f09d737dae5a686192a5",
+  "site/README.md": "2ce0c1e6c2892bd570a6f3c1f8b0c1134ba7184f3ed9b2afe6a59fe1869b0ee1",
+  "site/ar/index.html": "7b49018b824c3feb67148e77f57e27043f63483b9b5543f4ad4707032dedfcc2",
+  "site/index.html": "f12b014131ac71bcb5268742a7c85393d9d310525e04f95fac44b041441c8eb7",
+  "site/llms.txt": "c22c002ca720d4f1b64311dc2c41ca6911f61673abc65a52d3803f0a43cf160f",
+  "site/main.js": "4c993cc707d645dbd91b5d8ed2bd1be08d5a9d73cdd8e6a17add13325aade56a",
+  "site/privacy.html": "d76bf924c4eca6b7bfbd9dbffeb924e678123aad6e78b394664242f8dad471db",
   "site/robots.txt": "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95",
-  "site/styles.css": "a65b3aa13f670afd2a597942aa81e4e4ee706806e56cffc356e15ae4caf0d414"
+  "site/styles.css": "e31d80554d7348689a313ca4c9da56fc5335853aea3febb73572bac373dab998"
 }
 -->

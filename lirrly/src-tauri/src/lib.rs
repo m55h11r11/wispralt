@@ -180,7 +180,9 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
     wait_for_modifier_release().await;
 
     use tauri_plugin_clipboard_manager::ClipboardExt;
-    // Zero-width-wrapped so it stays invisible if a worst-case abort leaves it behind.
+    // Zero-width-wrapped so it can never equal text the user copied. It is
+    // visible text if it stays on the pasteboard, so every exit below either
+    // puts the user's pasteboard back or clears it (audit A40).
     const SENTINEL: &str = "\u{200B}lirrly-selection-sentinel\u{200B}";
     // Full-fidelity snapshot: images/files/rich text survive the round-trip (A18).
     let previous = pasteboard::snapshot();
@@ -188,46 +190,82 @@ async fn capture_selection(app: AppHandle) -> Result<String, String> {
         .write_text(SENTINEL.to_string())
         .map_err(|e| e.to_string())?;
     let ours = pasteboard::change_count();
+    // Restore the user's pasteboard. A snapshot too large to keep cannot be
+    // restored; then at least what this flow put there — the sentinel, or the
+    // copied selection, last written at change count `mine` — must not be
+    // left behind for the user to paste.
+    let put_back = |previous: &pasteboard::Saved, mine: isize| {
+        if !pasteboard::restore(previous) && pasteboard::change_count() == mine {
+            pasteboard::clear();
+        }
+    };
     tokio::time::sleep(Duration::from_millis(60)).await;
 
-    {
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Meta, Direction::Press)
-            .map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Unicode('c'), Direction::Click)
-            .map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Meta, Direction::Release)
-            .map_err(|e| e.to_string())?;
+    let mut clicked = false;
+    let copy_error = send_copy_keystroke(&mut clicked).err();
+    if let Some(e) = &copy_error {
+        if !clicked {
+            // The keystroke never happened, so nothing replaced the sentinel.
+            if pasteboard::change_count() == ours {
+                put_back(&previous, ours);
+            }
+            return Err(e.clone());
+        }
+        // ⌘C went out but releasing ⌘ failed: the copy can still land, so it
+        // is read and cleaned up like any other.
     }
 
-    // Apps write the pasteboard asynchronously — poll until the sentinel is replaced.
-    let mut captured: Option<String> = None;
+    // Apps write the pasteboard asynchronously — poll until the sentinel is
+    // replaced. Any text counts here, a blank selection's too: it came from
+    // our ⌘C, so the user's pasteboard must still go back over it.
+    // The change count is sampled before each read, so it can only be older
+    // than the text read: a write landing in between makes the clear below
+    // skip (leaving content) rather than wipe something that isn't ours.
+    let mut copied: Option<String> = None;
+    let mut seen = ours;
     const POLL: Duration = Duration::from_millis(40);
     for _ in 0..(SELECTION_COPY_WAIT.as_millis() / POLL.as_millis()) {
         tokio::time::sleep(POLL).await;
+        seen = pasteboard::change_count();
         if let Ok(now) = app.clipboard().read_text() {
             if now != SENTINEL {
-                if !now.trim().is_empty() {
-                    captured = Some(now);
-                }
+                copied = Some(now);
                 break;
             }
         }
     }
 
-    // The captured text has been read out, so the ⌘C result is consumed —
-    // put the user's original pasteboard back, whatever its types were. On a
+    // The copied text has been read out, so the ⌘C result is consumed — put
+    // the user's original pasteboard back, whatever its types were. On a
     // timeout with no new write, restoring also clears the sentinel. Only when
-    // something non-text appeared (count moved but nothing was captured) does
-    // the pasteboard keep that newer content.
-    if captured.is_some() || pasteboard::change_count() == ours {
-        let _ = pasteboard::restore(&previous);
+    // something non-text appeared (count moved but no text) does the
+    // pasteboard keep that newer content.
+    if copied.is_some() {
+        put_back(&previous, seen);
+    } else if pasteboard::change_count() == ours {
+        put_back(&previous, ours);
     }
-    captured.ok_or_else(|| "no_selection".to_string())
+    match copied.filter(|text| !text.trim().is_empty()) {
+        Some(text) => Ok(text),
+        None => Err(copy_error.unwrap_or_else(|| "no_selection".to_string())),
+    }
+}
+
+/// Sends ⌘C to the frontmost app. `clicked` turns true once the C itself went
+/// out, after which the copy may land even if releasing ⌘ then fails.
+fn send_copy_keystroke(clicked: &mut bool) -> Result<(), String> {
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Meta, Direction::Press)
+        .map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Unicode('c'), Direction::Click)
+        .map_err(|e| e.to_string())?;
+    *clicked = true;
+    enigo
+        .key(Key::Meta, Direction::Release)
+        .map_err(|e| e.to_string())
 }
 
 /// Opt-in insights endpoint (self-hosted). The client only ever posts here when
@@ -375,7 +413,12 @@ fn update_shortcut(app: AppHandle, action: String, accelerator: String) -> Resul
         if *old == accelerator {
             return Ok(());
         }
-        let _ = app.global_shortcut().unregister(old.as_str());
+        // If the old binding cannot be removed it is still live; registering
+        // the new one too would leave two hotkeys firing and a registry that
+        // knows only one of them. Keep the old binding instead.
+        app.global_shortcut()
+            .unregister(old.as_str())
+            .map_err(|e| e.to_string())?;
     }
 
     match register_action_shortcut(&app, &action, &accelerator) {
@@ -384,11 +427,19 @@ fn update_shortcut(app: AppHandle, action: String, accelerator: String) -> Resul
             Ok(())
         }
         Err(e) => {
+            // Put back what was live before, or the default when nothing was.
+            // The registry only ever records a binding that actually registered
+            // (audit A38): a recorded-but-dead hotkey made re-saving the same
+            // shortcut a silent no-op, so it could never be revived.
             let fallback = map
                 .get(&action)
                 .cloned()
                 .unwrap_or_else(|| default_accelerator_for(&action).to_string());
-            let _ = register_action_shortcut(&app, &action, &fallback);
+            if register_action_shortcut(&app, &action, &fallback).is_ok() {
+                map.insert(action, fallback);
+            } else {
+                map.remove(&action);
+            }
             Err(e)
         }
     }
@@ -406,8 +457,10 @@ mod pasteboard {
     use objc2_foundation::{NSArray, NSData, NSString};
 
     /// Above this, restoring is skipped rather than doubling a huge clipboard
-    /// in memory; the user's copy stays lost as before, but nothing new breaks.
-    const MAX_SAVED_BYTES: usize = 8 * 1024 * 1024;
+    /// in memory; the user's copy is then lost, as before A18. 8 MB skipped
+    /// the most common rich clipboard of all — a copied photo, whose TIFF data
+    /// is often larger (audit A40). The copy is held for about a second.
+    const MAX_SAVED_BYTES: usize = 64 * 1024 * 1024;
 
     pub struct Saved {
         items: Vec<Vec<(String, Vec<u8>)>>,
@@ -448,6 +501,11 @@ mod pasteboard {
             items: items_out,
             restorable: true,
         }
+    }
+
+    /// Empty the pasteboard (used when a snapshot was too large to restore).
+    pub fn clear() {
+        NSPasteboard::generalPasteboard().clearContents();
     }
 
     /// Write the snapshot back. Callers must have checked `changeCount` first;
@@ -494,6 +552,7 @@ mod pasteboard {
     pub fn restore(_saved: &Saved) -> bool {
         false
     }
+    pub fn clear() {}
 }
 
 /// Bundle id of the app currently receiving key events, when macOS reports one.
@@ -755,7 +814,13 @@ fn history_migrate(app: AppHandle, legacy: Vec<Value>) -> Result<Vec<Value>, Str
     with_history(&app, |items, present| {
         let adopted = !present;
         if adopted {
-            *items = legacy.into_iter().filter(Value::is_object).collect();
+            // Same ceiling as every other write (A48); legacy lists were capped
+            // at 200, so this only guards a hand-edited one.
+            *items = legacy
+                .into_iter()
+                .filter(Value::is_object)
+                .take(HISTORY_LIMIT_MAX)
+                .collect();
         }
         let backfilled = backfill_history_ids(items);
         (adopted || backfilled, items.clone())
@@ -851,16 +916,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .manage(ShortcutRegistry(Mutex::new(HashMap::from([
-            (
-                "dictation".to_string(),
-                DEFAULT_DICTATION_ACCELERATOR.to_string(),
-            ),
-            (
-                "transform".to_string(),
-                DEFAULT_TRANSFORM_ACCELERATOR.to_string(),
-            ),
-        ]))))
+        // Filled in `setup` with the bindings that actually registered.
+        .manage(ShortcutRegistry(Mutex::new(HashMap::new())))
         .manage(LastTranscript(Mutex::new(String::new())))
         .manage(PasteLock(TokioMutex::new(())))
         .manage(HistoryLock(Mutex::new(())))
@@ -911,13 +968,21 @@ pub fn run() {
             // mean Lirrly simply would not open — with no way to reach Settings
             // and rebind it. Degrade instead: the FlowBar's record button and
             // the tray still work, and the saved bindings are applied moments
-            // later anyway.
+            // later anyway. Only a binding that registered is recorded (A38),
+            // so the frontend's re-apply retries one that did not, and can
+            // tell the user which shortcut another app is holding.
+            let registry = app.state::<ShortcutRegistry>();
             for (action, accelerator) in [
                 ("dictation", DEFAULT_DICTATION_ACCELERATOR),
                 ("transform", DEFAULT_TRANSFORM_ACCELERATOR),
             ] {
-                if let Err(err) = register_action_shortcut(app.handle(), action, accelerator) {
-                    eprintln!("{action} shortcut unavailable ({accelerator}): {err}");
+                match register_action_shortcut(app.handle(), action, accelerator) {
+                    Ok(()) => {
+                        if let Ok(mut map) = registry.0.lock() {
+                            map.insert(action.to_string(), accelerator.to_string());
+                        }
+                    }
+                    Err(err) => eprintln!("{action} shortcut unavailable ({accelerator}): {err}"),
                 }
             }
 

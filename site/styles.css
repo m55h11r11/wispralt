@@ -287,27 +287,6 @@ summary {
   font-size: 1.16rem;
   letter-spacing: -0.01em;
 }
-.mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 2.5px;
-  height: 20px;
-}
-.mark i {
-  width: 3.5px;
-  border-radius: 99px;
-  background: var(--grad);
-  background-size: 300% 100%;
-  animation: markshift 7s linear infinite;
-}
-.mark i:nth-child(1) { height: 9px; }
-.mark i:nth-child(2) { height: 15px; }
-.mark i:nth-child(3) { height: 20px; }
-.mark i:nth-child(4) { height: 13px; }
-.mark i:nth-child(5) { height: 8px; }
-@keyframes markshift {
-  to { background-position: 300% 0; }
-}
 .nav-links {
   display: flex;
   gap: 24px;
@@ -443,12 +422,6 @@ summary {
   /* Grid items default to min-width:auto, so a nowrap child (the Homebrew
      command) would otherwise widen this column past a narrow viewport. */
   min-width: 0;
-}
-.hero-ar {
-  margin: 18px 0 0;
-  font-size: clamp(1.05rem, 1.8vw, 1.3rem);
-  color: var(--ink-55);
-  font-weight: 500;
 }
 .kbd-inline {
   font-family: var(--sans);
@@ -792,12 +765,6 @@ summary {
 }
 .arabic-en {
   direction: ltr;
-}
-.ar-display {
-  font-family: var(--arabic);
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: 0;
 }
 .ar-lede {
   font-size: 1.14rem;
@@ -1438,4 +1405,98 @@ details[open] .faq-body {
 }
 .legal a:hover {
   color: var(--teal);
+}
+
+/* ---------- Brand: the v9 app icon (replaces the old 5-bar mark), "Pro",
+   language switch ---------- */
+/* The icon PNG is the square app artwork; the rounding is display only. */
+.mark-logo {
+  flex: none;
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+.foot-brand .mark-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6.5px;
+}
+.brand-name {
+  white-space: nowrap;
+}
+.brand-pro {
+  font-weight: 500;
+  color: var(--ink-55);
+}
+.lang-switch {
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.94rem;
+  color: var(--ink-55);
+  transition: color 0.2s;
+}
+.lang-switch:hover {
+  color: var(--ink);
+}
+/* Phones: the language link needs the room; GitHub is linked below anyway. */
+@media (max-width: 430px) {
+  .nav-cta .gh-link {
+    display: none;
+  }
+}
+
+/* ---------- Arabic page (ar/) ----------
+   Same layout, mirrored by dir="rtl". Arabic letters must stay joined, so
+   no tracking, and no synthetic italics; Readex Pro carries the display
+   type because EB Garamond has no Arabic. Latin runs keep Figtree. */
+html[lang="ar"] body {
+  font-family: "Figtree", var(--arabic);
+}
+html[lang="ar"] body * {
+  letter-spacing: normal;
+}
+html[lang="ar"] .display,
+html[lang="ar"] .display-2 {
+  font-family: var(--arabic);
+  font-weight: 600;
+  line-height: 1.25;
+}
+html[lang="ar"] .display {
+  font-size: clamp(2.7rem, 7.4vw, 4.9rem);
+}
+html[lang="ar"] .display em,
+html[lang="ar"] .display-2 em {
+  font-style: normal;
+  font-weight: 600;
+}
+html[lang="ar"] .tnote,
+html[lang="ar"] .foot-tag {
+  font-family: var(--arabic);
+  font-style: normal;
+}
+html[dir="rtl"] .skip {
+  left: auto;
+  right: 10px;
+}
+html[dir="rtl"] .arabic-en {
+  direction: rtl;
+}
+html[dir="rtl"] .brew {
+  padding: 8px 14px 8px 8px;
+}
+html[lang="ar"] .repo-pill,
+html[lang="ar"] .repo-view {
+  white-space: nowrap;
+}
+/* The selection sweep starts where the line starts. */
+html[dir="rtl"] .tsel:not([dir="ltr"]) {
+  background-position: 100% 0;
+}
+/* An RTL track overflows to the left, so it loops by moving right. */
+html[dir="rtl"] .marquee-track {
+  animation-name: marquee-rtl;
+}
+@keyframes marquee-rtl {
+  to { transform: translateX(50%); }
 }

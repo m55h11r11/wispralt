@@ -455,6 +455,7 @@ export default function FlowBar() {
     // totals remain in Insights, but celebrations use the lifetime session count.
     const milestone =
       settings.notifications.milestones && [10, 50, 100, 500, 1000].includes(count);
+    setToastAction(null);
     setMessage(milestone ? `🎉 ${count} dictations!` : "Done");
     scheduleReset(milestone ? TOAST_MS.milestone : TOAST_MS.done, opId);
   }
@@ -463,6 +464,7 @@ export default function FlowBar() {
    *  Accessibility fix only when that is actually the reason. */
   function showCopied(reason: CopiedReason, lead: string, opId: number) {
     if (reason === "target_changed") {
+      setToastAction(null);
       setMessage(`${lead} — you switched apps, press ⌘V`);
     } else {
       setMessage(`${lead} — press ⌘V to paste`);
@@ -551,6 +553,7 @@ export default function FlowBar() {
         showCopied(copied, `${transform.name} — copied`, opId);
         return;
       }
+      setToastAction(null);
       setMessage(`${transform.name} ✓`);
       scheduleReset(TOAST_MS.done, opId);
     } catch (e) {
@@ -821,7 +824,7 @@ export default function FlowBar() {
         <div className="status-toast message-toast" role="status">
           {state === "processing" && <span className="tiny-spinner" />}
           {message || labelFor(state)}
-          {state === "error" && toastAction && (
+          {(state === "error" || state === "done") && toastAction && (
             <button className="toast-action" onClick={toastAction.run}>
               {toastAction.label}
             </button>

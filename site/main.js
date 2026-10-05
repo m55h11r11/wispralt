@@ -12,6 +12,8 @@
      skips the opt-in entirely — there is nothing to animate. */
   if (!RM) document.documentElement.classList.add("js-reveal");
   const FINE = matchMedia("(pointer: fine)").matches;
+  /* The Arabic page (ar/) shares this script; only the demo text differs. */
+  const AR_PAGE = document.documentElement.lang === "ar";
   const $ = (s, r = document) => r.querySelector(s);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -154,44 +156,62 @@
     el.style.opacity = "1";
   };
 
+  // The first sentence is the page's own language, filler and all; the second
+  // shows the other language passing straight through.
+  const EN_SENTENCE = "Move the meeting to Thursday.";
+  const AR_SENTENCE = "خلّنا نأجل الاجتماع للخميس، وأرسل لهم تأكيد.";
+  const HERO = AR_PAGE
+    ? {
+        polishing: "جارٍ التحسين…",
+        done: "تم ✓",
+        first: { dir: "rtl", cps: 26, keep: "طيب ", strike: "اممم،", rest: " خلّنا نأجل الاجتماع للخميس وأرسل لهم تأكيد", clean: AR_SENTENCE },
+        second: { dir: "ltr", cps: 30, text: EN_SENTENCE },
+      }
+    : {
+        polishing: "Polishing…",
+        done: "Done ✓",
+        first: { dir: "ltr", cps: 30, keep: "ok so ", strike: "um,", rest: " move the meeting to thursday", clean: EN_SENTENCE },
+        second: { dir: "rtl", cps: 26, text: AR_SENTENCE },
+      };
+
   async function heroLoop() {
-    const EN_RAW = "ok so um, move the meeting to thursday";
-    const AR = "خلّنا نأجل الاجتماع للخميس، وأرسل لهم تأكيد.";
+    const { first, second } = HERO;
+    const raw = first.keep + first.strike + first.rest;
     for (;;) {
       // idle
-      field.dir = "ltr";
+      field.dir = first.dir;
       typed.textContent = "";
       setPill("idle");
       ampTarget = 0.28;
       await hold(1400, heroOn);
-      // listening (EN)
+      // listening (page language)
       setPill("listening");
       ampTarget = 1;
-      await typeInto(typed, EN_RAW, 30, heroOn);
+      await typeInto(typed, raw, first.cps, heroOn);
       await hold(500, heroOn);
       // polishing
-      setPill("msg", "Polishing…");
+      setPill("msg", HERO.polishing);
       ampTarget = 0.4;
       typed.textContent = "";
       const strike = document.createElement("s");
-      strike.textContent = "um,";
-      typed.append("ok so ", strike, " move the meeting to thursday");
+      strike.textContent = first.strike;
+      typed.append(first.keep, strike, first.rest);
       await hold(850, heroOn);
-      await fadeSwap(typed, () => (typed.textContent = "Move the meeting to Thursday."));
-      setPill("msg", "Done ✓");
+      await fadeSwap(typed, () => (typed.textContent = first.clean));
+      setPill("msg", HERO.done);
       await hold(1500, heroOn);
       // clear
       await fadeSwap(typed, () => (typed.textContent = ""));
       setPill("idle");
       ampTarget = 0.28;
       await hold(900, heroOn);
-      // listening (AR) — dialect preserved
-      field.dir = "rtl";
+      // listening (the other language) — passed through as spoken
+      field.dir = second.dir;
       setPill("listening");
       ampTarget = 1;
-      await typeInto(typed, AR, 26, heroOn);
+      await typeInto(typed, second.text, second.cps, heroOn);
       await hold(500, heroOn);
-      setPill("msg", "Done ✓");
+      setPill("msg", HERO.done);
       ampTarget = 0.35;
       await hold(1600, heroOn);
       await fadeSwap(typed, () => (typed.textContent = ""));
@@ -199,8 +219,8 @@
   }
   if (typed && pill) {
     if (RM) {
-      typed.textContent = "Move the meeting to Thursday.";
-      setPill("msg", "Done ✓");
+      typed.textContent = HERO.first.clean;
+      setPill("msg", HERO.done);
     } else {
       heroLoop();
     }
@@ -239,12 +259,19 @@
   const tname = $("#tname");
   const tchips = $("#tchips");
   if (tsel && tpill) {
-    const BASE = "ok so i need the report by tmrw morning";
-    const CYCLES = [
-      { t: "formal", name: "Make formal", out: "Could you please share the report by tomorrow morning?", ar: false },
-      { t: "rewrite", name: "Rewrite", out: "I need the report by tomorrow morning.", ar: false },
-      { t: "translate", name: "Translate", out: "أحتاج التقرير بكرة الصبح، لو سمحت.", ar: true },
-    ];
+    // `dir`/`lang` mark an output in the other language than the page.
+    const BASE = AR_PAGE ? "طيب ابغى التقرير بكرة الصبح ضروري" : "ok so i need the report by tmrw morning";
+    const CYCLES = AR_PAGE
+      ? [
+          { t: "formal", name: "صياغة رسمية", out: "نأمل التكرم بإرسال التقرير صباح الغد." },
+          { t: "rewrite", name: "إعادة صياغة", out: "أحتاج التقرير بكرة الصبح." },
+          { t: "translate", name: "ترجمة", out: "I need the report by tomorrow morning, please.", dir: "ltr", lang: "en" },
+        ]
+      : [
+          { t: "formal", name: "Make formal", out: "Could you please share the report by tomorrow morning?" },
+          { t: "rewrite", name: "Rewrite", out: "I need the report by tomorrow morning." },
+          { t: "translate", name: "Translate", out: "أحتاج التقرير بكرة الصبح، لو سمحت.", dir: "rtl", lang: "ar" },
+        ];
     const tOn = onScreenFlag(tsel);
     const setBase = () => {
       tsel.classList.remove("is-selected");
@@ -258,7 +285,7 @@
     if (RM) {
       setBase();
       tsel.classList.add("is-selected");
-      tname.textContent = "Make formal";
+      tname.textContent = CYCLES[0].name;
       tpill.classList.add("is-on");
       chipLive("formal");
     } else {
@@ -277,9 +304,9 @@
             tsel.classList.add("is-swap");
             await hold(320, tOn);
             tsel.textContent = c.out;
-            if (c.ar) {
-              tsel.dir = "rtl";
-              tsel.lang = "ar";
+            if (c.dir) {
+              tsel.dir = c.dir;
+              tsel.lang = c.lang;
             }
             tsel.classList.remove("is-selected", "is-swap");
             await hold(420, tOn);
@@ -350,7 +377,7 @@ document.querySelectorAll('.brew-copy').forEach((btn) => {
     try {
       await navigator.clipboard.writeText(btn.dataset.copy || '');
       const original = btn.textContent;
-      btn.textContent = 'Copied';
+      btn.textContent = document.documentElement.lang === 'ar' ? 'تم النسخ' : 'Copied';
       btn.classList.add('copied');
       setTimeout(() => {
         btn.textContent = original;

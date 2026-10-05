@@ -3,15 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lirrly — Speak. It's written. Free open-source dictation for macOS</title>
+  <title>Lirrly Pro — Speak. It's written. Free open-source dictation for macOS</title>
   <meta name="description" content="Free, open-source dictation for your Mac. Press ⌘⇧D, talk into any text field, and clean, polished writing lands where your cursor is. Arabic-first — your dialect stays yours." />
   <link rel="canonical" href="https://lirrly.com/" />
+  <link rel="alternate" hreflang="en" href="https://lirrly.com/" />
+  <link rel="alternate" hreflang="ar" href="https://lirrly.com/ar/" />
+  <link rel="alternate" hreflang="x-default" href="https://lirrly.com/" />
   <meta name="theme-color" content="#ffffeb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)" />
 
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="Lirrly" />
-  <meta property="og:title" content="Lirrly — Speak. It's written." />
+  <meta property="og:site_name" content="Lirrly Pro" />
+  <meta property="og:title" content="Lirrly Pro — Speak. It's written." />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="ar_SA" />
   <meta property="og:description" content="Free, open-source dictation for macOS. ⌘⇧D anywhere. Arabic-first — your dialect stays yours." />
   <meta property="og:url" content="https://lirrly.com/" />
   <meta property="og:image" content="https://lirrly.com/img/hub-home.png" />
@@ -31,22 +36,23 @@
 
   <header class="nav" id="nav">
     <div class="shell nav-inner">
-      <a class="brand" href="#top" aria-label="Lirrly — home">
-        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        <span class="brand-name" translate="no">Lirrly</span>
+      <a class="brand" href="#top" aria-label="Lirrly Pro — home">
+        <img class="mark-logo" src="img/icon-192.png" alt="" width="30" height="30" />
+        <span class="brand-name" translate="no">Lirrly <span class="brand-pro">Pro</span></span>
       </a>
       <nav class="nav-links" aria-label="Sections">
         <a href="#how">How</a>
-        <a href="#arabic" lang="ar">العربية</a>
+        <a href="#arabic">Arabic</a>
         <a href="#privacy">Privacy</a>
         <a href="#transforms">Transforms</a>
         <a href="#open">Open&nbsp;source</a>
       </nav>
       <div class="nav-cta">
+        <a class="lang-switch" href="ar/" hreflang="ar" lang="ar">العربية</a>
         <a class="gh-link" href="https://github.com/m55h11r11/wispralt" aria-label="Lirrly on GitHub">
           <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         </a>
-        <a class="btn btn-ink btn-sm" href="https://github.com/m55h11r11/wispralt/releases/latest" data-magnet>Download</a>
+        <a class="btn btn-ink btn-sm" href="https://github.com/m55h11r11/wispralt/releases/latest/download/Lirrly.dmg" data-magnet>Download</a>
       </div>
     </div>
   </header>
@@ -60,13 +66,12 @@
           <h1 class="display" data-reveal style="--d:60ms">
             Speak.<br /><em>It&rsquo;s&nbsp;written.</em>
           </h1>
-          <p class="hero-ar" lang="ar" dir="rtl" data-reveal style="--d:120ms">تكلّم، وخلّ الكتابة علينا.</p>
           <p class="lede" data-reveal style="--d:180ms">
-            Press <kbd class="kbd-inline">⌘⇧D</kbd> in any app and talk. Lirrly turns your voice into
+            Press <kbd class="kbd-inline">⌘⇧D</kbd> in any app and talk. Lirrly Pro turns your voice into
             clean, polished writing&nbsp;&mdash; pasted right where your cursor is.
           </p>
           <div class="cta-row" data-reveal style="--d:240ms">
-            <a class="btn btn-ink" href="https://github.com/m55h11r11/wispralt/releases/latest" data-magnet>
+            <a class="btn btn-ink" href="https://github.com/m55h11r11/wispralt/releases/latest/download/Lirrly.dmg" data-magnet>
               Download for macOS
               <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/></svg>
             </a>
@@ -143,12 +148,12 @@
     <!-- ============ ARABIC ============ -->
     <section class="section band" id="arabic">
       <div class="shell arabic-grid">
-        <div class="arabic-ar" lang="ar" dir="rtl">
-          <h2 class="display-2 ar-display" data-reveal>لهجتك&hellip; مو&nbsp;الفصحى.</h2>
-          <p class="ar-lede" data-reveal style="--d:100ms">تحافظ ليرلي على كلامك مثل ما قلته — بدون ما تحوّله لفصحى رسمية ولا تكسر جملتك.</p>
-          <p class="ar-type" data-reveal style="--d:180ms"><span id="artyped"></span><span class="caret caret-ink"></span></p>
+        <div class="arabic-ar" dir="ltr">
+          <h2 class="display-2" data-reveal>Your dialect&hellip; not textbook&nbsp;<em>Arabic.</em></h2>
+          <p class="ar-lede" data-reveal style="--d:100ms">Lirrly keeps your words the way you said them — no forcing them into formal Arabic, no breaking your sentence.</p>
+          <p class="ar-type" lang="ar" dir="rtl" data-reveal style="--d:180ms"><span id="artyped"></span><span class="caret caret-ink"></span></p>
           <ul class="chips" data-reveal style="--d:260ms">
-            <li>حجازي</li><li>نجدي</li><li>مصري</li><li>شامي</li><li>خليجي</li>
+            <li>Hijazi</li><li>Najdi</li><li>Egyptian</li><li>Levantine</li><li>Gulf</li>
           </ul>
         </div>
         <div class="arabic-en">
@@ -292,7 +297,7 @@
         <div class="faq" data-reveal style="--d:120ms">
           <details>
             <summary>Is it really free?<span class="faq-x" aria-hidden="true"></span></summary>
-            <div class="faq-body"><div class="faq-a"><p>The app is free and open-source under AGPL-3.0 — no account required. You connect your own free Groq API key for transcription. (A paid “Pro” tier may arrive later for optional extras; the open-source core stays free.)</p></div></div>
+            <div class="faq-body"><div class="faq-a"><p>Lirrly Pro is free and open-source under AGPL-3.0 — no account required. You connect your own free Groq API key for transcription. (Paid extras may arrive later; the open-source app stays free.)</p></div></div>
           </details>
           <details>
             <summary>Which languages does it handle?<span class="faq-x" aria-hidden="true"></span></summary>
@@ -319,7 +324,7 @@
       <div class="shell closer-inner">
         <h2 class="display closer-h" data-reveal>Stop typing.<br /><em>Start talking.</em></h2>
         <div class="cta-row cta-center" data-reveal style="--d:120ms">
-          <a class="btn btn-ink btn-lg" href="https://github.com/m55h11r11/wispralt/releases/latest" data-magnet>Download for macOS</a>
+          <a class="btn btn-ink btn-lg" href="https://github.com/m55h11r11/wispralt/releases/latest/download/Lirrly.dmg" data-magnet>Download for macOS</a>
         </div>
         <p class="brew" data-reveal style="--d:160ms">
           <code>brew install --cask m55h11r11/lirrly/lirrly</code>
@@ -334,8 +339,8 @@
     <div class="foot-grad" aria-hidden="true"></div>
     <div class="shell foot-inner">
       <div class="foot-brand">
-        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        <span>Lirrly</span>
+        <img class="mark-logo" src="img/icon-192.png" alt="" width="28" height="28" />
+        <span>Lirrly Pro</span>
         <p class="foot-tag">Dictation that keeps your voice.</p>
       </div>
       <nav class="foot-links" aria-label="Footer">
@@ -345,7 +350,7 @@
         <a href="https://github.com/m55h11r11/wispralt#readme">Docs</a>
         <a href="privacy.html">Privacy</a>
       </nav>
-      <p class="foot-made">Made in Jeddah <span lang="ar" dir="rtl">صُنع في جدة</span><br /><span class="foot-c">© 2026 Lirrly · AGPL-3.0</span></p>
+      <p class="foot-made">Made in Jeddah<br /><span class="foot-c">© 2026 Lirrly · AGPL-3.0</span></p>
     </div>
   </footer>
 </body>

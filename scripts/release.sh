@@ -157,11 +157,42 @@ case "$ASSESS" in *"source=Notarized Developer ID"*) ;; *) die "app is not notar
 xcrun stapler validate "$BUNDLE/macos/Lirrly.app" >/dev/null || die "notarization ticket not stapled"
 echo "  ok — notarized and stapled"
 
+step "Binding the artifacts to this build"
+# The archive's name carries no version, so a second build between the two
+# phases (a test variant, say) used to be uploaded and signed into latest.json
+# as this version (audit A43). Phase 1 records exactly what it verified;
+# --publish-only refuses anything that is not byte-identical to it.
+PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/macos/Lirrly.app/Contents/Info.plist")"
+[ "$PLIST_VERSION" = "$VERSION" ] || die "the built app says $PLIST_VERSION, not $VERSION — stale artifacts?"
+MANIFEST="$BUNDLE/release-manifest.json"
+CURRENT="$(python3 - "$VERSION" "$DMG" "$TARBALL" "$SIG" <<'PY'
+import hashlib, json, sys
+version, dmg, archive, signature = sys.argv[1:5]
+def sha(path):
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+print(json.dumps({"version": version, "dmg": sha(dmg), "archive": sha(archive), "signature": sha(signature)}, sort_keys=True))
+PY
+)"
+if [ "$PUBLISH_ONLY" = 0 ]; then
+  echo "$CURRENT" > "$MANIFEST"
+  echo "  ok — recorded $MANIFEST"
+else
+  [ -f "$MANIFEST" ] || die "no build manifest at $MANIFEST — rebuild (drop --publish-only)"
+  [ "$(cat "$MANIFEST")" = "$CURRENT" ] \
+    || die "the artifacts changed since phase 1 verified them (another build ran?) — rebuild (drop --publish-only)"
+  echo "  ok — byte-identical to what phase 1 built and notarized"
+fi
+
 step "Staging release assets"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 ASSET_TARBALL="Lirrly_${VERSION}_aarch64.app.tar.gz"
 cp "$DMG" "$OUT/"
+# The same DMG under a name that never changes, so the website's Download
+# button can link releases/latest/download/Lirrly.dmg and start the download
+# in one click instead of opening the release page (audit A46).
+cp "$DMG" "$OUT/Lirrly.dmg"
 cp "$TARBALL" "$OUT/$ASSET_TARBALL"
 DMG_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
 echo "$DMG_SHA  Lirrly_${VERSION}_aarch64.dmg" > "$OUT/Lirrly_${VERSION}_aarch64.dmg.sha256"
@@ -236,6 +267,7 @@ NOTES_ARGS=(--generate-notes)
 # anywhere before "Going live" leaves every channel exactly as it was.
 gh release create "v$VERSION" \
   "$OUT/Lirrly_${VERSION}_aarch64.dmg" \
+  "$OUT/Lirrly.dmg" \
   "$OUT/$ASSET_TARBALL" \
   "$OUT/Lirrly_${VERSION}_aarch64.dmg.sha256" \
   "$OUT/latest.json" \
@@ -246,8 +278,18 @@ TAP_READY=0
 if [ -d "$TAP/.git" ]; then
   /usr/bin/sed -i '' "s/  version \".*\"/  version \"$VERSION\"/" "$TAP/Casks/lirrly.rb"
   /usr/bin/sed -i '' "s/  sha256 \".*\"/  sha256 \"$DMG_SHA\"/" "$TAP/Casks/lirrly.rb"
+  grep -q "  version \"$VERSION\"" "$TAP/Casks/lirrly.rb" && grep -q "  sha256 \"$DMG_SHA\"" "$TAP/Casks/lirrly.rb" \
+    || die "the cask did not take version $VERSION / sha256 $DMG_SHA — nothing is public yet; fix $TAP/Casks/lirrly.rb"
   git -C "$TAP" add Casks/lirrly.rb
-  git -C "$TAP" commit -m "lirrly $VERSION" || true
+  # `commit || true` used to turn any failure (a hook, a lock) into "ready",
+  # leaving brew on the old version while GitHub went live (A43). Only an
+  # already-committed cask — a re-run — may skip the commit.
+  if git -C "$TAP" diff --cached --quiet; then
+    echo "  cask already committed at $VERSION"
+  else
+    git -C "$TAP" commit -m "lirrly $VERSION" \
+      || die "tap commit failed — nothing is public yet; the draft v$VERSION can be deleted and this re-run"
+  fi
   TAP_READY=1
   echo "  ok — tap commit ready; pushed the moment the release is live"
 else
