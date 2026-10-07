@@ -60,3 +60,11 @@ arriving later, and the open-source core staying free.
 The project wants stronger commercial protection than AGPL provides (e.g. forbidding
 competitors' commercial use *now*) → consider a source-available license such as BSL-1.1,
 accepting that it is no longer OSI "open source" and conflicts with the current brand.
+
+## Addendum (2026-10-05) — "Pro" is now the free app's public name
+
+The website and the full app's Hub call the free, open-source full app **Lirrly Pro**
+(the bundle, cask and update channel keep the name Lirrly; the sandboxed App Store app
+stays Lirrly Lite). The "paid Pro tier" wording above therefore no longer names a product:
+the site's FAQ now says only that paid extras may arrive later while the open-source app
+stays free. A future paid tier or service needs a name other than "Pro".

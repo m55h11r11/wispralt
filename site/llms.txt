@@ -4,7 +4,8 @@
 
 ## What it does
 - System-wide dictation: ⌘⇧D → record → Whisper transcription → AI cleanup → paste at cursor (clipboard restored).
-- Transforms (v0.3): select text in any app, press ⌥T, and the active transform (rewrite, formal, grammar, summarize, translate, or custom) rewrites it in place.
+- Transforms: select text in any app, press ⌥T, and the active transform (rewrite, formal, grammar, summarize, translate, or custom) rewrites it in place.
+- Updates: signed in-app updates (Settings → Account) and Homebrew.
 - Languages: English, Arabic (dialect-preserving), Spanish, French, German, Italian, Portuguese, Hindi, auto-detect.
 - Privacy: no account, and no Lirrly-operated service in the dictation path — audio and the returned text go to the user's own Groq API key, under Groq's terms. Opt-in crash reports (off by default) and the in-app feedback form are the only things that reach a Lirrly-operated server. API key in the macOS Keychain; history stored locally, last 200 entries.
 - Free & open-source: AGPL-3.0 license; users bring their own free Groq API key. Paid extras may arrive later; the open-source app stays free.
